@@ -92,5 +92,13 @@ Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profi
 
 ### **7. Computational Deconvolution of Transcriptomics Data from Mixed Cell Populations** (Cobos et al., _Oxford Bioinformatics_ 2018)
 
--   **Approach:** Review of cell-type deconvolution methods for bulk RNA-seq samples.
+-   **Approach:** Review of cell-type deconvolution methods for bulk RNA-seq samples; good **starting point** for beginners to understand terminology.
 -   **Outcome:** Provides a foundational understanding of cellular deconvolution and how single-cell data informs bulk deconvolution.
+
+### **8. CIBERSORT** (Newman et al., _Nature Methods_ 2015)
+
+-   **Approach:** Pioneering deconvolution method for estimating cell-type proportions in bulk RNA-seq or microarray samples using a known set of "signature" genes for each cell type.
+-   **Outcome:** Accurately estimates the relative abundances of immune cell types in complex tissues, often used as a baseline for later deconvolution models.
+-   **Methods:** Linear support vector regression (SVR) trained on purified cell-type expression profiles to create reference signatures. Bulk RNA-seq data is deconvolved relative to these signatures using SVR to infer cell-type proportions.
+-   **Evaluation:** Compares estimated cell-type proportions to known ground-truth proportions from flow cytometry and other orthogonal methods. Performance is measured using **correlation coefficients** and **error rates** relative to true proportions in validation datasets.
+-   **Comparison:** Unlike later models (like CIBERSORTx and Scaden), CIBERSORT relies on **linear regression** and pre-defined signature gene sets, whereas newer approaches (like Scaden) use **non-linear deep learning** to learn more flexible relationships.
