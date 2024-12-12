@@ -54,6 +54,7 @@ Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profi
 -   **Approach:** Non-linear deep learning model to predict cell-type proportions from bulk RNA-seq using single-cell data.
 -   **Outcome:** More accurate deconvolution than linear models when trained on large, representative datasets.
 -   **Methods:** Neural networks trained on synthetic bulk samples created from single-cell datasets.
+-   **Evaluation:** Compares predicted cell-type abundance fractions (**X'**) against ground-truth cell-type proportions derived from paired bulk and single-cell RNA-seq datasets (e.g., PBMC datasets). Metrics include **Mean Absolute Error (MAE)** and **correlation** between predicted and true proportions.
 
 ### **2. SQUID** (Cobos et al., _Genome Biology_ 2023)
 
