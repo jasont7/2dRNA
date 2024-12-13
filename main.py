@@ -12,7 +12,7 @@ SC_FILE_PATH = "data/pbmc_3k_filtered.h5"
 ACT_FILE_PATH = "data/ACT_annotations_3k.tsv"
 NUM_SAMPLES = 1000  # Number of synthetic bulk samples to generate
 NUM_CELLS = 500  # Number of cells to sum for each bulk sample
-EPOCHS = 20  # Number of epochs for training
+EPOCHS = 50  # Number of epochs for training
 BATCH_SIZE = 32  # Batch size for training
 TEST_SIZE = 0.2  # For train-test split
 
