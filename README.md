@@ -27,17 +27,17 @@ Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profi
 -   **Structure:** Aggregated (averaged) GEPs by cell type from **S**
 -   AKA GEP matrix at the _cell-type_ level
 
-### X: Cell-Type Abundance matrix
+### C: Cell-Type Abundance matrix
 
 -   **Dimensions:** k cell types × n patients
 -   **Structure:** Each entry represents the abundance of each cell type in **R**
--   **Operation:** R × X = pseudo-bulk (like **B** but adjusted for sequencing and cellular detail)
+-   **Operation:** R × C = pseudo-bulk (like **B** but adjusted for sequencing and cellular detail)
 
-### Relationship: B ≈ R × X
+### Relationship: B ≈ R × C
 
--   Since **B** and **S** samples are derived using different technologies, B = XR does **not** hold.
--   **Goal:** Learn a non-linear relationship from **B** to **X'**.
--   **Outcome:** Estimated **X'** can be combined with any **R** (real, simulated, or generic) to produce sc-adjusted pseudo-bulk for more accurate GEPs than the input bulk.
+-   Since **B** and **S** samples are derived using different technologies, B = R × C does **not** hold.
+-   **Goal:** Learn a non-linear relationship from **B** to **C'**.
+-   **Outcome:** Estimated **C'** can be combined with any **R** (real, simulated, or generic) to produce sc-adjusted pseudo-bulk for more accurate GEPs than the input bulk.
 
 ## **Methods**
 
@@ -46,6 +46,7 @@ Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profi
 -   **Datasets**:
     -   **PBMC ~10k cells**: [Filtered feature barcode matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-10-k-1-standard-2-0-0)
     -   **PBMC ~3k cells**: [Filtered feature barcode matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-3-k-1-standard-2-0-0)
+    -   **ACT Annotations**: [Web Tool](http://xteam.xbio.top/ACT/index.jsp); demo option generates cell-type annotations for the PBMC 3k dataset.
 
 ## **Related Works**
 
@@ -54,7 +55,7 @@ Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profi
 -   **Approach:** Non-linear deep learning model to predict cell-type proportions from bulk RNA-seq using single-cell data.
 -   **Outcome:** More accurate deconvolution than linear models when trained on large, representative datasets.
 -   **Methods:** Neural networks trained on synthetic bulk samples created from single-cell datasets.
--   **Evaluation:** Compares predicted cell-type abundance fractions (**X'**) against ground-truth cell-type proportions derived from paired bulk and single-cell RNA-seq datasets (e.g., PBMC datasets). Metrics include **Mean Absolute Error (MAE)** and **correlation** between predicted and true proportions.
+-   **Evaluation:** Compares predicted cell-type abundance fractions (**C'**) against ground-truth cell-type proportions derived from paired bulk and single-cell RNA-seq datasets (e.g., PBMC datasets). Metrics include **Mean Absolute Error (MAE)** and **correlation** between predicted and true proportions.
 
 ### **2. SQUID** (Cobos et al., _Genome Biology_ 2023)
 
