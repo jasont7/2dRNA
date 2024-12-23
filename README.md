@@ -24,7 +24,7 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 ### $S$: Single-Cell Matrix
 
 -   **Dimensions:** $c$ cells $×$ $p$ genes ($c ≈ 5000$, $p ≈ 200$) for one patient.
-    -   Multiple patients **stacked vertically**; real dimensions: \[$n$ patients × $c$ cells\] $×$ $p$ genes.
+    -   Multiple patients **stacked vertically**; real dimensions: ($n$ patients × $c$ cells) $×$ $p$ genes.
 -   Each entry is a GEP for an **individual cell**.
 -   **Expensive** to generate (requires cellular-level sampling).
 
