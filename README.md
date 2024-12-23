@@ -1,52 +1,85 @@
-# **Cellular Deconvolution Project Outline [CSC 427]**
+# **Cellular Deconvolution of Bulk RNA-seq Data**
 
-**Reimplementing: Scaden** (Menden et al., _Science Advances_ 2020)
+## **Overview**
 
-## **Goal**
+**Bulk (RNA-seq)** measures gene expression for **entire tissues** but lacks cell-specific resolution, providing only an "average" signal across all cell types present (_unknown aggregation_). **Cellular deconvolution** aims to break down this bulk signal into **cell-type**-specific contributions (cell-type abundance fractions), offering deeper insight into the _composition_ of cell types within a sample.
 
-Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profiles (GEPs) to cell-level GEPs by learning a non-linear relationship between bulk and single-cell (scRNA-seq) data samples.
+We aim to bridge the gap between bulk (which is affordable but lacks cell-specific detail) and single-cell (which provides detailed cell-level information but is expensive and difficult to scale) data by learning a **non-linear** relationship between them using **paired samples** (from the same patients).
 
-## **Terminology**
+### Why Is This Important?
 
-### S: Single-cell matrix
+-   Many diseases, such as cancer or autoimmune disorders, involve **changes in the proportion of cell types** within tissues.
+-   Understanding these changes can inform diagnosis, treatment, and mechanistic studies.
+-   Bulk RNA-seq is affordable and widely available, making deconvolution a practical tool to use with existing datasets.
 
--   **Dimensions:** c cells × p genes (c: ~5000, p: ~200) for one patient
--   **Structure:** Multiple patients stacked vertically: \[n patients × c cells\] × p genes
--   Expensive to generate (requires cellular-level sampling)
--   AKA GEP matrix at the _cell_ level
+### Key Concepts for Non-Biologists
 
-### B: Bulk matrix
+-   **Gene Expression** refers to the ability to use a gene's information to create functional molecules like proteins. **RNA-seq** (_a.k.a. GEP data_) quantifies the activity level (expression) of each gene in a sample or cell.
+-   **Single-Cell RNA-seq**: Data that measures gene expression for _individual cells_, providing a high-resolution view of cellular composition but at a _high cost_.
+-   **Bulk RNA-seq**: Aggregates the gene expression of _all cells_ in a sample, offering a _lower-cost_, lower-resolution view.
+-   **Deconvolution**: A "reverse engineering" of bulk RNA-seq data into cell-type-specific components, estimating the abundance of different cell types.
 
--   **Dimensions:** p genes × n patients
--   **Structure:** Each entry represents GEP for an entire tissue (no cell-specific information)
--   **Cost:** Cheap to generate (high-level/abstract view)
+## **Background**
 
-### R: Reference matrix (derived from **S** or simulated)
+### $S$: Single-Cell Matrix
 
--   **Dimensions:** p genes × k cell types (k < 20)
--   **Structure:** Aggregated (averaged) GEPs by cell type from **S**
--   AKA GEP matrix at the _cell-type_ level
+-   **Dimensions:** $c$ cells $×$ $p$ genes ($c ≈ 5000$, $p ≈ 200$) for one patient.
+    -   Multiple patients **stacked vertically**; real dimensions: \[$n$ patients × $c$ cells\] $×$ $p$ genes.
+-   Each entry is a GEP for an **individual cell**.
+-   **Expensive** to generate (requires cellular-level sampling).
 
-### C: Cell-Type Abundance matrix
+### $B$: Bulk Matrix
 
--   **Dimensions:** k cell types × n patients
--   **Structure:** Each entry represents the abundance of each cell type in **R**
--   **Operation:** R × C = pseudo-bulk (like **B** but adjusted for sequencing and cellular detail)
+-   **Dimensions:** $p$ genes $×$ $n$ patients.
+-   Each entry is a GEP for an **entire** tissue (no cell-specific information).
+-   Cheap to generate (high-level/abstract view).
 
-### Relationship: B ≈ R × C
+### $R$: Reference Matrix (derived from **S** or simulated)
 
--   Since **B** and **S** samples are derived using different technologies, B = R × C does **not** hold.
--   **Goal:** Learn a non-linear relationship from **B** to **C'**.
--   **Outcome:** Estimated **C'** can be combined with any **R** (real, simulated, or generic) to produce sc-adjusted pseudo-bulk for more accurate GEPs than the input bulk.
+-   **Dimensions:** $p$ genes $×$ $k$ cell types ($k$ < 20).
+-   **Aggregation** (average) of cell GEPs by cell-type from **$S$**.
 
-## **Methods**
+### $C$: Cell-Type Abundance Matrix
 
--   **Build a non-linear deep learning (DL) model** to learn the relationship between bulk samples and cell-type abundance fractions.
+-   **Dimensions:** $k$ cell types $×$ $n$ patients.
+-   Each entry represents the **abundance** (fraction) of each cell-type for a given GEP vector or matrix.
+-   $R × C = B'$ (**pseudo-bulk**; like **$B$** but derived from single-cell data instead of different bulk sequencing technology).
 
--   **Datasets**:
-    -   **PBMC ~10k cells**: [Filtered feature barcode matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-10-k-1-standard-2-0-0)
-    -   **PBMC ~3k cells**: [Filtered feature barcode matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-3-k-1-standard-2-0-0)
-    -   **ACT Annotations**: [Web Tool](http://xteam.xbio.top/ACT/index.jsp); demo option generates cell-type annotations for the PBMC 3k dataset.
+### Relationship: $B ≈ R × C$
+
+-   Since **$B$** and **$S$** samples are derived using different technologies, $B = R × C$ does **not** hold ($B'=R × C$ _does_ hold).
+-   **Goal:** Learn a non-linear relationship from **$B$** to **$C$**.
+-   **Outcome:** Estimated **$C$** can be multiplied with any reference GEP matrix **$R$** to produce a single-cell-adjusted bulk vector that has more accurate GEPs than the input bulk.
+
+## **Previous Approach: Scaden**
+
+### Methodology
+
+-   Generate **synthetic** bulk samples by **randomly sampling cells** from the S matrix and **summing** them to get a vector. Repeat $n$ times to generate the pseudo-bulk matrix $B'$ ($p$ genes $×$ $n$ patients) by stacking individual synthetic bulk vectors.
+
+    -   Each synthetically generated bulk vector will also have a corresponding **cell-type abundance vector** which is generated by calculating the proportion (fraction) of each cell-type in the set of randomly selected cells.
+
+-   Build a **non-linear deep learning (DL) model** that learns the relationship between the synthetic bulk vectors and cell-type abundance fractions.
+
+    -   The result is a model that takes unseen bulk vectors $B_{new}$ as input and predicts cell-type fractions $C$ as output.
+
+### Datasets
+
+-   **PBMC ~10k cells**: [Filtered single-cell matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-10-k-1-standard-2-0-0)
+-   **PBMC ~3k cells**: [Filtered single-cell matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-3-k-1-standard-2-0-0)
+-   **ACT Annotations**: [Web Tool](http://xteam.xbio.top/ACT/index.jsp); demo option generates cell-type annotations for the PBMC 3k dataset.
+
+## Novel Approach: Using Paired Data
+
+-   Utilize **paired** bulk and single-cell RNA-seq data (from the same patients) to directly learn the relationship between bulk GEPs and cell-type abundance fractions.
+-   Train a deep learning model on **real paired data** rather than synthetically generating pseudo-bulk samples. This ensures the model captures actual biological variability and patient-specific effects present in true data.
+-   The model predicts cell-type fractions ($C$) for new bulk samples ($B_{new}$), leveraging the inherent paired structure during training to learn more accurate mappings.
+
+### Benefits
+
+-   Captures **realistic biological variation** across patients, improving generalizability.
+-   Accounts for **technological difference** between bulk and single-cell sampling/sequencing.
+-   Eliminates reliance on assumptions about random sampling during pseudo-bulk creation, resulting in a more **robust** model.
 
 ## **Related Works**
 
@@ -62,7 +95,7 @@ Deconvolution of bulk RNA-seq data: transform tissue-level gene expression profi
 -   **Approach:** Benchmarks methods to deconvolve bulk RNA-seq into cell-type contributions; introduces SQUID.
 -   **Outcome:** Strengths, limitations, and applicability of methods across tissues/conditions, and evaluation of SQUID's performance.
 -   **Methods:** Compares bulk to single-cell reference profiles, estimating the fraction of each cell type.
--   **Comparison:** SQUID is considered the current SOTA linear deconvolution algorithm. Our approach focuses on a **non-linear model** to learn more complex relationships.
+-   **Comparison:** SQUID is considered the current SOTA **linear** deconvolution algorithm. Our approach focuses on a **non-linear model** to learn more complex relationships.
 
 ### **3. DSSC** (Wang et al., _BMC Genomics_ 2024)
 
