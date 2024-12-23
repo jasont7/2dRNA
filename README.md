@@ -2,22 +2,39 @@
 
 ## **Overview**
 
-**Bulk (RNA-seq)** measures gene expression for **entire tissues** but lacks cell-specific resolution, providing only an "average" signal across all cell types present (_unknown aggregation_). **Cellular deconvolution** aims to break down this bulk signal into **cell-type**-specific contributions (cell-type abundance fractions), offering deeper insight into the _composition_ of cell types within a sample.
+**Bulk (RNA-seq)** measures gene expression for _entire tissues_ but lacks _cell-specific_ information, providing only an "average" signal across all cell types present (_unknown aggregation_). **Cellular deconvolution** aims to break down this bulk signal into **cell-type**-specific contributions (cell-type abundance fractions), offering deeper insight into the _composition_ of cell types within a sample.
 
 We aim to bridge the gap between bulk (which is affordable but lacks cell-specific detail) and single-cell (which provides detailed cell-level information but is expensive and difficult to scale) data by learning a **non-linear** relationship between them using **paired samples** (from the same patients).
 
 ### Why Is This Important?
 
 -   Many diseases, such as cancer or autoimmune disorders, involve **changes in the proportion of cell types** within tissues.
--   Understanding these changes can inform diagnosis, treatment, and mechanistic studies.
+-   Understanding these changes can inform diagnosis and treatment.
 -   Bulk RNA-seq is affordable and widely available, making deconvolution a practical tool to use with existing datasets.
 
 ### Key Concepts for Non-Biologists
 
--   **Gene Expression** refers to the ability to use a gene's information to create functional molecules like proteins. **RNA-seq** (_a.k.a. GEP data_) quantifies the activity level (expression) of each gene in a sample or cell.
--   **Single-Cell RNA-seq**: Data that measures gene expression for _individual cells_, providing a high-resolution view of cellular composition but at a _high cost_.
--   **Bulk RNA-seq**: Aggregates the gene expression of _all cells_ in a sample, offering a _lower-cost_, lower-resolution view.
--   **Deconvolution**: A "reverse engineering" of bulk RNA-seq data into cell-type-specific components, estimating the abundance of different cell types.
+-   **Gene Expression**: The process by which a gene's information is used to produce functional molecules (e.g., proteins). It’s a measure of how "active" a gene is in a particular sample.
+
+    -   **Example**: Measuring gene expression helps identify which genes are turned on or off in a disease state compared to healthy cells.
+
+-   **RNA-seq** (RNA Sequencing): A technology used to quantify gene expression levels. This can be applied at **two scales**:
+
+    1. **Single-Cell RNA-seq** (scRNA-seq): Measures gene expression in _individual cells_, providing a detailed view of cell composition.
+
+        - **Example**: scRNA-seq can distinguish immune cell subtypes in a blood sample, like T-cells, B-cells, and macrophages.
+        - **Pros**: High resolution, powerful for complex tissues.
+        - **Cons**: High cost and computational complexity.
+
+    2. **Bulk RNA-seq**: Measures an _aggregate_ gene expression across _all cells_ in a sample, giving a more generalized view.
+        - **Example**: Analyzing tumor samples to detect overall differences in gene expression between cancerous and normal tissue.
+        - **Pros**: Cost-effective and simpler.
+        - **Cons**: Lacks cell-type specificity.
+
+-   **Deconvolution**: A computational technique used to estimate the proportions of different cell types from bulk RNA-seq data, effectively "reverse engineering" it.
+
+    -   **Example**: Using deconvolution, you can estimate the percentage of immune cells in a blood sample versus non-immune cells.
+    -   **Real-World Use Case**: Identifying changes in immune cell composition in diseases like cancer, COVID-19, or COPD.
 
 ## **Background**
 
@@ -52,7 +69,9 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 -   **Outcome:** Estimated **$C$** can be multiplied with any reference GEP matrix **$R$** to produce a single-cell-adjusted bulk vector that has more accurate GEPs than the input bulk.
 
 ## **Previous Approach: Scaden**
+
 Scaden Pipeline Visualization:
+
 <div align="center">
     <img src="https://github.com/user-attachments/assets/cb51b76f-87b5-4f72-9424-dd8a96dd5c40" alt="Scaden" width="400"/>
 </div>
@@ -73,7 +92,6 @@ Scaden Pipeline Visualization:
 -   **PBMC ~3k cells**: [Filtered single-cell matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-3-k-1-standard-2-0-0)
 -   **ACT Annotations**: [Web Tool](http://xteam.xbio.top/ACT/index.jsp); demo option generates cell-type annotations for the PBMC 3k dataset.
 
-
 ## Novel Approach: Using Paired Data
 
 -   Utilize **paired** bulk and single-cell RNA-seq data (from the same patients) to directly learn the relationship between bulk GEPs and cell-type abundance fractions.
@@ -85,7 +103,6 @@ Scaden Pipeline Visualization:
 -   Captures **realistic biological variation** across patients, improving generalizability.
 -   Accounts for **technological difference** between bulk and single-cell sampling/sequencing.
 -   Eliminates reliance on assumptions about random sampling during pseudo-bulk creation, resulting in a more **robust** model.
-
 
 ## **Related Works**
 
