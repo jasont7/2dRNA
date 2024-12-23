@@ -1,4 +1,4 @@
-# **Cellular Deconvolution of Bulk RNA-seq Data**
+# **2dRNA: Deep Deconvolution of RNA-seq Data**
 
 ## **Overview**
 
