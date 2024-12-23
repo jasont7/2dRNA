@@ -52,6 +52,10 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 -   **Outcome:** Estimated **$C$** can be multiplied with any reference GEP matrix **$R$** to produce a single-cell-adjusted bulk vector that has more accurate GEPs than the input bulk.
 
 ## **Previous Approach: Scaden**
+Scaden Pipeline Visualization:
+<div align="center">
+    <img src="https://github.com/user-attachments/assets/cb51b76f-87b5-4f72-9424-dd8a96dd5c40" alt="Scaden" width="400"/>
+</div>
 
 ### Methodology
 
@@ -69,6 +73,7 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 -   **PBMC ~3k cells**: [Filtered single-cell matrix (HDF5)](https://www.10xgenomics.com/datasets/pbmc-from-a-healthy-donor-granulocytes-removed-through-cell-sorting-3-k-1-standard-2-0-0)
 -   **ACT Annotations**: [Web Tool](http://xteam.xbio.top/ACT/index.jsp); demo option generates cell-type annotations for the PBMC 3k dataset.
 
+
 ## Novel Approach: Using Paired Data
 
 -   Utilize **paired** bulk and single-cell RNA-seq data (from the same patients) to directly learn the relationship between bulk GEPs and cell-type abundance fractions.
@@ -80,6 +85,7 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 -   Captures **realistic biological variation** across patients, improving generalizability.
 -   Accounts for **technological difference** between bulk and single-cell sampling/sequencing.
 -   Eliminates reliance on assumptions about random sampling during pseudo-bulk creation, resulting in a more **robust** model.
+
 
 ## **Related Works**
 
