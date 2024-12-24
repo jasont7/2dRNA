@@ -51,7 +51,7 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 -   Each entry is a GEP for an **entire** tissue (no cell-specific information).
 -   Cheap to generate (high-level/abstract view).
 
-### $R$: Reference Matrix (derived from **S** or simulated)
+### $R$: Reference Matrix
 
 -   **Dimensions:** $k$ cell types $×$ $p$ genes ($k$ < 20).
 -   **Aggregation** (average) of cell GEPs by cell-type from **$S$**.
