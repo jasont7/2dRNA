@@ -47,13 +47,13 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 
 ### $B$: Bulk Matrix
 
--   **Dimensions:** $p$ genes $×$ $n$ patients.
+-   **Dimensions:** $n$ patients $×$ $p$ genes.
 -   Each entry is a GEP for an **entire** tissue (no cell-specific information).
 -   Cheap to generate (high-level/abstract view).
 
 ### $R$: Reference Matrix (derived from **S** or simulated)
 
--   **Dimensions:** $p$ genes $×$ $k$ cell types ($k$ < 20).
+-   **Dimensions:** $k$ cell types $×$ $p$ genes ($k$ < 20).
 -   **Aggregation** (average) of cell GEPs by cell-type from **$S$**.
 
 ### $C$: Cell-Type Abundance Matrix
@@ -62,9 +62,9 @@ We aim to bridge the gap between bulk (which is affordable but lacks cell-specif
 -   Each entry represents the **abundance** (fraction) of each cell-type for a given GEP vector or matrix.
 -   $R × C = B'$ (**pseudo-bulk**; like **$B$** but derived from single-cell data instead of different bulk sequencing technology).
 
-### Relationship: $B ≈ R × C$
+### Relationship: $B ≈ C × R$
 
--   Since **$B$** and **$S$** samples are derived using different technologies, $B = R × C$ does **not** hold ($B'=R × C$ _does_ hold).
+-   Since **$B$** and **$S$** samples are derived using _different technologies_, $B = C × R$ does **not** hold.
 -   **Goal:** Learn a non-linear relationship from **$B$** to **$C$**.
 -   **Outcome:** Estimated **$C$** can be multiplied with any reference GEP matrix **$R$** to produce a single-cell-adjusted bulk vector that has more accurate GEPs than the input bulk.
 
