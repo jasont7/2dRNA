@@ -1,4 +1,5 @@
 import scanpy as sc
+from anndata import AnnData
 import pandas as pd
 import numpy as np
 import os
@@ -17,7 +18,7 @@ BATCH_SIZE = 32  # Batch size for training
 TEST_SIZE = 0.2  # For train-test split
 
 
-def load_single_cell_data(file_path):
+def load_single_cell_data(file_path) -> AnnData:
     """
     Load single-cell gene expression data from H5 file.
     Returns AnnData object containing single-cell gene expression matrix.
@@ -26,7 +27,7 @@ def load_single_cell_data(file_path):
     return S
 
 
-def add_ACT_annotations(S, ACT_file):
+def add_ACT_annotations(S: AnnData, ACT_file_path) -> AnnData:
     """
     Add ACT-based cell-type annotations to single-cell clusters.
 
@@ -35,7 +36,7 @@ def add_ACT_annotations(S, ACT_file):
     2. If no clustering exists, run Leiden clustering on the dataset.
     3. Map ACT-predicted cell types to clusters and add 'cell_type' to S.obs.
     """
-    ACT_df = pd.read_csv(ACT_file, sep="\t")
+    ACT_df = pd.read_csv(ACT_file_path, sep="\t")
     cluster_to_ct = dict(zip(ACT_df["Cluster"], ACT_df["Cell.Type"]))
 
     if "leiden" not in S.obs:
@@ -48,7 +49,7 @@ def add_ACT_annotations(S, ACT_file):
     return S
 
 
-def build_train_set(S, n_cells, n_samples):
+def build_train_set(S: AnnData, n_cells, n_samples):
     """
     Generate synthetic pseudo-bulk samples and corresponding cell-type fractions.
 
