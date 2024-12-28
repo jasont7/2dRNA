@@ -48,40 +48,39 @@ def add_ACT_annotations(S, ACT_file):
     return S
 
 
-def simulate_bulk_rna_seq(S, n_cells, n_samples):
+def build_train_set(S, n_cells, n_samples):
     """
-    Simulate synthetic bulk RNA-seq data by summing cell counts.
+    Generate synthetic pseudo-bulk samples and corresponding cell-type fractions.
 
     Steps:
     1. Randomly select `n_cells` cells from the single-cell data.
-    2. Sum gene counts for these cells to create bulk samples.
-    3. Calculate and store cell-type abundance fractions for each bulk sample.
+    2. Sum gene counts for these cells to create simulated pseudo-bulk samples.
+    3. Calculate cell-type abundance fractions (C) for each simulated sample.
     """
-    all_bulk_samples = []
-    all_ct_fractions = []
+    B = []
+    C = []
 
     for _ in range(n_samples):
+        # Randomly select cells and sum their gene counts to create pseudo-bulk samples
         rand_cells = np.random.choice(S.n_obs, n_cells, replace=False)
         bulk_sample = S[rand_cells, :].X.sum(axis=0).A1
+        B.append(bulk_sample)
 
-        ct_counts = S.obs.iloc[rand_cells]["cell_type"].value_counts(normalize=True)
-        ct_fractions = {ct: ct_counts.get(ct, 0) for ct in S.obs["cell_type"].unique()}
+        # Calculate cell-type abundance fractions for the random cells selected
+        all_celltypes = S.obs["cell_type"].unique()
+        S_subsample = S.obs.iloc[rand_cells]["cell_type"]
 
-        all_bulk_samples.append(bulk_sample)
-        all_ct_fractions.append(ct_fractions)
+        # Dict of cell type counts normalized to sum to 1
+        celltype_fractions = S_subsample.value_counts(normalize=True)
 
-    return np.array(all_bulk_samples), pd.DataFrame(all_ct_fractions)
+        # Impute missing cell types with 0 fraction
+        all_celltype_fractions = {
+            ct: celltype_fractions.get(ct, 0.0) for ct in all_celltypes
+        }
+        C.append(list(all_celltype_fractions.values()))
 
-
-def preprocess_data(B, C):
-    """
-    Normalize bulk and convert cell-type matrix to NP array for training.
-    """
-    B = np.log1p(B)
-    if isinstance(C, pd.DataFrame):
-        C = C.values
-    else:
-        C = np.array(C)
+    B = np.log1p(np.array(B))  # Log-normalize bulk samples
+    C = np.array(C)
     return B, C
 
 
@@ -134,8 +133,12 @@ def save_model_and_preds(model, X_test, y_test, history):
     print(f"Saved true fractions to {true_fractions_file}")
 
 
+def eval_model(model, X_test, y_test):
+    test_loss, test_mae = model.evaluate(X_test, y_test, verbose=2)
+    print("Evaluation results:\n", f"Test Loss: {test_loss}, Test MAE: {test_mae}\n")
+
+
 def main():
-    # Load single-cell data and add cell-type annotations
     S = load_single_cell_data(SC_FILE_PATH)
     print("\nLoaded single-cell data")
     print(f"Dataset shape (cells x genes): {S.shape}", "\n")
@@ -144,23 +147,17 @@ def main():
     print("Added cell-type annotations\nSample:")
     print(S.obs.head(), "\n")
 
-    # Generate synthetic bulk samples (input) with matching cell-type
-    # abundance fractions (output) from single-cell data.
-    # B: bulk matrix, C: cell-type abundance matrix
-    B, C = simulate_bulk_rna_seq(S, NUM_CELLS, NUM_SAMPLES)
+    B, C = build_train_set(S, NUM_CELLS, NUM_SAMPLES)
     print(
         "Generated synthetic dataset\n",
         f"  Bulk matrix shape (samples x genes): {B.shape}\n",
         f"  CT abundance matrix shape (samples x CTs): {C.shape}\n",
     )
 
-    # Preprocess input data and split into training and testing sets
-    X, y = preprocess_data(B, C)
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=42
+        B, C, test_size=TEST_SIZE, random_state=42
     )
 
-    # Build and train the model
     input_dim = X_train.shape[1]
     output_dim = y_train.shape[1]
     model = build_model(input_dim, output_dim)
@@ -175,12 +172,9 @@ def main():
         verbose=2,
     )
     print("Model training complete!\n")
-
-    # Evaluate the model and save predictions
-    test_loss, test_mae = model.evaluate(X_test, y_test, verbose=2)
-    print("Evaluation results:\n", f"Test Loss: {test_loss}, Test MAE: {test_mae}\n")
-
     save_model_and_preds(model, X_test, y_test, history)
+
+    eval_model(model, X_test, y_test)
 
 
 if __name__ == "__main__":
