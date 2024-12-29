@@ -184,11 +184,9 @@ def eval_model(model, X_test, Y_test):
 
 
 def main(saved_model=None):
-    S = load_SC_data(SC_FILE_PATH)
-    print("\nLoaded single-cell data")
+    S = add_ACT_annotations(load_SC_data(SC_FILE_PATH), ACT_FILE_PATH)
+    print("\nLoaded single-cell data and added ACT annotations.")
     print(f" - S dims (cells x genes): {S.shape}")
-    S = add_ACT_annotations(S, ACT_FILE_PATH)
-    print(" - Added cell-type annotations to S")
 
     B, C = build_dataset(S, NUM_CELLS, NUM_SAMPLES)
     print("\nGenerated synthetic dataset")

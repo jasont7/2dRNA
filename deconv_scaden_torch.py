@@ -180,6 +180,7 @@ def main(saved_model_path=None):
     S = add_ACT_annotations(load_SC_data(SC_FILE_PATH), ACT_FILE_PATH)
     print("\nLoaded single-cell data and added ACT annotations.")
     print(f" - S dims (cells x genes): {S.shape}")
+
     B, C = build_dataset(S, NUM_CELLS, NUM_SAMPLES)
     print("\nGenerated synthetic dataset")
     print(f" - B dims (samples x genes): {B.shape}")
