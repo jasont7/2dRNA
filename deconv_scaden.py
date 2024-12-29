@@ -5,6 +5,7 @@ import numpy as np
 import os
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
+import datetime
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -72,13 +73,11 @@ def build_train_set(S: AnnData, n_cells, n_samples):
         S_subsample = S.obs.iloc[rand_cells]["cell_type"]
 
         # Dict of cell type counts normalized to sum to 1
-        celltype_fractions = S_subsample.value_counts(normalize=True)
+        ct_fractions = S_subsample.value_counts(normalize=True)
 
         # Impute missing cell types with 0 fraction
-        all_celltype_fractions = {
-            ct: celltype_fractions.get(ct, 0.0) for ct in all_celltypes
-        }
-        C.append(list(all_celltype_fractions.values()))
+        all_ct_fractions = {ct: ct_fractions.get(ct, 0.0) for ct in all_celltypes}
+        C.append(list(all_ct_fractions.values()))
 
     B = np.log1p(np.array(B))  # Log-normalize bulk samples
     C = np.array(C)
@@ -117,17 +116,21 @@ def save_model_and_preds(model, X_test, y_test, history):
     """
     os.makedirs("output", exist_ok=True)
 
-    model_path = os.path.join("output", "scaden_model.keras")
+    dtnum = str(datetime.datetime.now().strftime("%Y%m%d_%H%M"))
+    model_dir = os.path.join("output", "scaden", dtnum)
+    os.makedirs(model_dir, exist_ok=True)
+
+    model_path = os.path.join(model_dir, f"model.keras")
     model.save(model_path)
     print(f"Saved model to {model_path}")
 
-    history_path = os.path.join("output", "training_history.npy")
+    history_path = os.path.join(model_dir, f"history.npy")
     np.save(history_path, history.history)
     print(f"Saved training history to {history_path}")
 
     y_pred = model.predict(X_test)
-    predictions_file = os.path.join("output", "predicted_fractions.csv")
-    true_fractions_file = os.path.join("output", "true_fractions.csv")
+    predictions_file = os.path.join(model_dir, f"pred_fractions.csv")
+    true_fractions_file = os.path.join(model_dir, f"true_fractions.csv")
     np.savetxt(predictions_file, y_pred, delimiter=",")
     np.savetxt(true_fractions_file, y_test, delimiter=",")
     print(f"Saved predicted fractions to {predictions_file}")
@@ -155,27 +158,27 @@ def main():
         f"  CT abundance matrix shape (samples x CTs): {C.shape}\n",
     )
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_train, X_test, Y_train, Y_test = train_test_split(
         B, C, test_size=TEST_SIZE, random_state=42
     )
 
     input_dim = X_train.shape[1]
-    output_dim = y_train.shape[1]
+    output_dim = Y_train.shape[1]
     model = build_model(input_dim, output_dim)
     print("Training model...")
     history = model.fit(
         X_train,
-        y_train,
-        validation_data=(X_test, y_test),
+        Y_train,
+        validation_data=(X_test, Y_test),
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
         validation_split=TEST_SIZE,
         verbose=2,
     )
     print("Model training complete!\n")
-    save_model_and_preds(model, X_test, y_test, history)
+    save_model_and_preds(model, X_test, Y_test, history)
 
-    eval_model(model, X_test, y_test)
+    eval_model(model, X_test, Y_test)
 
 
 if __name__ == "__main__":
