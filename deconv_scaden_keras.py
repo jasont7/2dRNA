@@ -186,14 +186,14 @@ def eval_model(model, X_test, Y_test):
 def main(saved_model=None):
     S = load_SC_data(SC_FILE_PATH)
     print("\nLoaded single-cell data")
-    print(f" - S matrix shape (cells x genes): {S.shape}")
+    print(f" - S dims (cells x genes): {S.shape}")
     S = add_ACT_annotations(S, ACT_FILE_PATH)
     print(" - Added cell-type annotations to S")
 
     B, C = build_dataset(S, NUM_CELLS, NUM_SAMPLES)
     print("\nGenerated synthetic dataset")
-    print(f" - B matrix shape (samples x genes): {B.shape}")
-    print(f" - C matrix shape (samples x CTs): {C.shape}")
+    print(f" - B dims (samples x genes): {B.shape}")
+    print(f" - C dims (samples x CTs): {C.shape}")
 
     X_train, X_test, Y_train, Y_test = train_test_split(
         B, C, test_size=TEST_SIZE, random_state=42
