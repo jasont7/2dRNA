@@ -1,17 +1,19 @@
+import os
+import sys
 import scanpy as sc
 from anndata import AnnData
 import pandas as pd
 import numpy as np
-import os
-import tensorflow as tf
 from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from scipy.spatial import distance
 import datetime
 import warnings
 
 warnings.filterwarnings("ignore")
 
-SC_FILE_PATH = "data/pbmc_3k_filtered.h5"
-ACT_FILE_PATH = "data/ACT_annotations_3k.tsv"
+SC_FILE_PATH = "input/scaden/pbmc_3k_filtered.h5"
+ACT_FILE_PATH = "input/scaden/ACT_annotations_3k.tsv"
 NUM_SAMPLES = 1000  # Number of synthetic bulk samples to generate
 NUM_CELLS = 500  # Number of cells to sum for each bulk sample
 EPOCHS = 50  # Number of epochs for training
@@ -19,7 +21,7 @@ BATCH_SIZE = 32  # Batch size for training
 TEST_SIZE = 0.2  # For train-test split
 
 
-def load_single_cell_data(file_path) -> AnnData:
+def load_SC_data(file_path) -> AnnData:
     """
     Load single-cell gene expression data from H5 file.
     Returns AnnData object containing single-cell gene expression matrix.
@@ -50,7 +52,7 @@ def add_ACT_annotations(S: AnnData, ACT_file_path) -> AnnData:
     return S
 
 
-def build_train_set(S: AnnData, n_cells, n_samples):
+def build_dataset(S: AnnData, n_cells, n_samples):
     """
     Generate synthetic pseudo-bulk samples and corresponding cell-type fractions.
 
@@ -110,7 +112,7 @@ def build_model(input_dim, output_dim):
     return model
 
 
-def save_model_and_preds(model, X_test, y_test, history):
+def save_training(model, X_test, Y_test, history):
     """
     Save the trained model, training history, and predictions on the test set.
     """
@@ -129,57 +131,102 @@ def save_model_and_preds(model, X_test, y_test, history):
     print(f"Saved training history to {history_path}")
 
     y_pred = model.predict(X_test)
-    predictions_file = os.path.join(model_dir, f"pred_fractions.csv")
+    preds_file = os.path.join(model_dir, f"pred_fractions.csv")
     true_fractions_file = os.path.join(model_dir, f"true_fractions.csv")
-    np.savetxt(predictions_file, y_pred, delimiter=",")
-    np.savetxt(true_fractions_file, y_test, delimiter=",")
-    print(f"Saved predicted fractions to {predictions_file}")
+    np.savetxt(preds_file, y_pred, delimiter=",")
+    np.savetxt(true_fractions_file, Y_test, delimiter=",")
+    print(f"Saved predicted fractions to {preds_file}")
     print(f"Saved true fractions to {true_fractions_file}")
 
 
-def eval_model(model, X_test, y_test):
-    test_loss, test_mae = model.evaluate(X_test, y_test, verbose=2)
-    print("Evaluation results:\n", f"Test Loss: {test_loss}, Test MAE: {test_mae}\n")
+def load_model(model_path):
+    """
+    Load a pre-trained model from a Keras model file.
+    """
+    try:
+        model = tf.keras.models.load_model(model_path)
+        print(f"Model successfully loaded from: {model_path}")
+        return model
+    except FileNotFoundError:
+        print(f"Error: Model file not found at {model_path}. Please check the path.")
+    except tf.errors.OpError as op_err:
+        print(f"TensorFlow operation error while loading model: {op_err}")
+    except Exception as e:
+        print(f"An unexpected error occurred while loading the model: {e}")
+    sys.exit(1)
 
 
-def main():
-    S = load_single_cell_data(SC_FILE_PATH)
+def eval_model(model, X_test, Y_test):
+    print("\nEvaluating model on Y_test:")
+
+    mae = tf.keras.metrics.MeanAbsoluteError()
+    mae.update_state(Y_test, model.predict(X_test, verbose=0))
+    mae_score = mae.result().numpy()
+    print(f" - MAE score: {mae_score}")
+
+    rmse = tf.keras.metrics.RootMeanSquaredError()
+    rmse.update_state(Y_test, model.predict(X_test, verbose=0))
+    rmse_score = rmse.result().numpy()
+    print(f" - RMSE score: {rmse_score}")
+
+    cosine = tf.keras.metrics.CosineSimilarity(axis=1)
+    cosine.update_state(Y_test, model.predict(X_test, verbose=0))
+    cosine_score = cosine.result().numpy()
+    print(f" - Cosine similarity: {cosine_score}")
+
+    # r2 = tf.keras.metrics.RSquared()
+    # r2.update_state(Y_test, model.predict(X_test))
+    # r2_score = r2.result().numpy()
+    # print(f" - R^2 score: {r2_score}")
+
+    # jsd = distance.jensenshannon(Y_test, model.predict(X_test, verbose=0)) ** 2
+    # print(f" - Jensen-Shannon divergence: {jsd}")
+
+
+def main(saved_model=None):
+    S = load_SC_data(SC_FILE_PATH)
     print("\nLoaded single-cell data")
-    print(f"Dataset shape (cells x genes): {S.shape}", "\n")
-
+    print(f" - S matrix shape (cells x genes): {S.shape}")
     S = add_ACT_annotations(S, ACT_FILE_PATH)
-    print("Added cell-type annotations\nSample:")
-    print(S.obs.head(), "\n")
+    print(" - Added cell-type annotations to S")
 
-    B, C = build_train_set(S, NUM_CELLS, NUM_SAMPLES)
-    print(
-        "Generated synthetic dataset\n",
-        f"  Bulk matrix shape (samples x genes): {B.shape}\n",
-        f"  CT abundance matrix shape (samples x CTs): {C.shape}\n",
-    )
+    B, C = build_dataset(S, NUM_CELLS, NUM_SAMPLES)
+    print("\nGenerated synthetic dataset")
+    print(f" - B matrix shape (samples x genes): {B.shape}")
+    print(f" - C matrix shape (samples x CTs): {C.shape}")
 
     X_train, X_test, Y_train, Y_test = train_test_split(
         B, C, test_size=TEST_SIZE, random_state=42
     )
 
-    input_dim = X_train.shape[1]
-    output_dim = Y_train.shape[1]
-    model = build_model(input_dim, output_dim)
-    print("Training model...")
-    history = model.fit(
-        X_train,
-        Y_train,
-        validation_data=(X_test, Y_test),
-        epochs=EPOCHS,
-        batch_size=BATCH_SIZE,
-        validation_split=TEST_SIZE,
-        verbose=2,
-    )
-    print("Model training complete!\n")
-    save_model_and_preds(model, X_test, Y_test, history)
+    if saved_model:
+        model = saved_model
+    else:
+        input_dim = X_train.shape[1]
+        output_dim = Y_train.shape[1]
+        model = build_model(input_dim, output_dim)
+        print("\nTraining model...\n")
+        history = model.fit(
+            X_train,
+            Y_train,
+            validation_data=(X_test, Y_test),
+            epochs=EPOCHS,
+            batch_size=BATCH_SIZE,
+            validation_split=TEST_SIZE,
+            verbose=2,
+        )
+        print("\nModel training complete!")
+        save_training(model, X_test, Y_test, history)
 
     eval_model(model, X_test, Y_test)
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        saved_model_path = sys.argv[1]
+        model = load_model(saved_model_path)
+        print("\nLoaded saved model")
+        main(model)
+    else:
+        print("\nTraining new model")
+        main()
