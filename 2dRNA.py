@@ -16,13 +16,22 @@ pd.set_option("display.max_colwidth", 100)
 np.set_printoptions(linewidth=120)
 np.set_printoptions(precision=4, suppress=True)
 
+
+########## CONSTANTS (please update) ##########
 BULK_PATH = "input/2dRNA/group1/bulk_RawCounts.tsv"
-SC_DIR_PATH = "input/2dRNA/group1/"
+SC_PATH = "input/2dRNA/group1/scRNA_CT1_top200_RawCounts.tsv"
+SC_METADATA_PATH = "input/2dRNA/group1/scRNA_CT1_top200_Metadata.tsv"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+N_AUG = 30
+AUG_RATIO = 0.9
+###############################################
 
 
 def load_data():
     bulk_df = pd.read_csv(BULK_PATH, sep="\t")
+    sc_df = pd.read_csv(SC_PATH, sep="\t")
+    sc_metadata_df = pd.read_csv(SC_METADATA_PATH, sep="\t")
 
     print("B Matrix (Tissue GEPs) Sample:\n")
     print(bulk_df.iloc[:, :6].head(5))
@@ -31,18 +40,12 @@ def load_data():
         f"\nB DIMENSIONS: rows (genes) = {bulk_df.shape[0]}, columns (patients) = {bulk_df.shape[1]}"
     )
 
-    sc_path = SC_DIR_PATH + "scRNA_CT1_top200_RawCounts.tsv"
-    sc_df = pd.read_csv(sc_path, sep="\t")
-
     print("S Matrix (Cell GEPs) Sample:\n")
     print(sc_df.iloc[:, :12].head(5))
     print("\n----------------------------------------------")
     print(
         f"\nS DIMENSIONS: rows (patients x cells) = {sc_df.shape[0]}, columns (genes) = {sc_df.shape[1]}"
     )
-
-    sc_metadata_path = SC_DIR_PATH + "scRNA_CT1_top200_Metadata.tsv"
-    sc_metadata_df = pd.read_csv(sc_metadata_path, sep="\t")
 
     print("S Metadata Matrix Sample:\n")
     print(sc_metadata_df.head(5))
@@ -132,7 +135,7 @@ def process_SC(sc_metadata: pd.DataFrame, patient_ids: np.ndarray, n_aug, aug_ra
     return C_flat, processed_patients
 
 
-def data_prep_pipeline(n_aug=30, aug_ratio=0.9):
+def data_prep_pipeline(n_aug, aug_ratio):
     """
     Pipeline for preparing all necessary data for training.
 
@@ -145,25 +148,26 @@ def data_prep_pipeline(n_aug=30, aug_ratio=0.9):
     """
 
     bulk_df, sc_df, sc_metadata_df = load_data()
-
     B, patient_ids = process_bulk(bulk_df, sc_df, sc_metadata_df)
     C_flat, processed_patient_ids = process_SC(
         sc_metadata_df, patient_ids, n_aug, aug_ratio
     )
     print("C sample:\n", C_flat[10:20, :])
 
+    # Keep only patients with both B and C data
     B_filtered = B[np.isin(patient_ids, processed_patient_ids)]
     print(f"Filtered B dims (patients x genes): {B_filtered.shape}")
 
-    B_aug = np.repeat(B_filtered, n_aug, axis=0)  # Repeat B for each augmentation
+    # Repeat B_i for each augmentation of S_i
+    B_aug = np.repeat(B_filtered, n_aug, axis=0)
     print(f"Flattened B dims ((patients * n_augs) x genes): {B_aug.shape}")
 
     return train_test_split(B_aug, C_flat, test_size=0.2, random_state=42)
 
 
-class Model2dRNA(nn.Module):
+class ScadenNN(nn.Module):
     def __init__(self, input_dim, output_dim):
-        super(Model2dRNA, self).__init__()
+        super(ScadenNN, self).__init__()
         self.model = nn.Sequential(
             nn.Linear(input_dim, 1000),
             nn.ReLU(),
@@ -270,7 +274,7 @@ class Model2dRNA(nn.Module):
 
 
 def main():
-    X_train, X_test, Y_train, Y_test = data_prep_pipeline()
+    X_train, X_test, Y_train, Y_test = data_prep_pipeline(N_AUG, AUG_RATIO)
 
     train_dataset = TensorDataset(
         torch.tensor(X_train, dtype=torch.float32),
@@ -283,7 +287,7 @@ def main():
 
     input_dim = X_train.shape[1]
     output_dim = Y_train.shape[1]
-    model = Model2dRNA(input_dim, output_dim)
+    model = ScadenNN(input_dim, output_dim)
     epochs = 150
     batch_size = 32
 
