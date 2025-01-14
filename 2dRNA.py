@@ -10,9 +10,9 @@ import datetime
 import warnings
 
 warnings.filterwarnings("ignore")
-pd.set_option("display.max_columns", None)
-pd.set_option("display.width", 1000)
-pd.set_option("display.max_colwidth", 100)
+# pd.set_option("display.max_columns", None)
+# pd.set_option("display.width", 1000)
+# pd.set_option("display.max_colwidth", 100)
 np.set_printoptions(linewidth=120)
 np.set_printoptions(precision=4, suppress=True)
 
@@ -28,6 +28,37 @@ AUG_RATIO = 0.9
 ###############################################
 
 
+class LinearModel(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LinearModel, self).__init__()
+        self.model = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class ScadenNN(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(ScadenNN, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, 1000),
+            nn.ReLU(),
+            nn.BatchNorm1d(1000),
+            nn.Dropout(0.3),
+            nn.Linear(1000, 500),
+            nn.ReLU(),
+            nn.BatchNorm1d(500),
+            nn.Dropout(0.3),
+            nn.Linear(500, 100),
+            nn.ReLU(),
+            nn.BatchNorm1d(100),
+            nn.Linear(100, output_dim),
+        )
+
+    def forward(self, x):
+        return self.model(x)
+
+
 def load_data():
     bulk_df = pd.read_csv(BULK_PATH, sep="\t")
     sc_df = pd.read_csv(SC_PATH, sep="\t")
@@ -35,32 +66,42 @@ def load_data():
 
     print("B Matrix (Tissue GEPs) Sample:\n")
     print(bulk_df.iloc[:, :6].head(5))
-    print("\n----------------------------------------------")
     print(
         f"\nB DIMENSIONS: rows (genes) = {bulk_df.shape[0]}, columns (patients) = {bulk_df.shape[1]}"
     )
+    print("\n----------------------------------------------\n")
 
     print("S Matrix (Cell GEPs) Sample:\n")
     print(sc_df.iloc[:, :12].head(5))
-    print("\n----------------------------------------------")
     print(
         f"\nS DIMENSIONS: rows (patients x cells) = {sc_df.shape[0]}, columns (genes) = {sc_df.shape[1]}"
     )
+    print("\n----------------------------------------------\n")
 
     print("S Metadata Matrix Sample:\n")
     print(sc_metadata_df.head(5))
-    print("\n----------------------------------------------")
-    print("S Metadata Info:\n")
-    sc_metadata_df.info()
-    print("----------------------------------------------")
     print(
-        f"\nS METADATA DIMENSIONS: rows (patients x cells) = {sc_metadata_df.shape[0]}, columns (metadata) = {sc_metadata_df.shape[1]}\n"
+        f"\nS METADATA DIMENSIONS: rows (patients x cells) = {sc_metadata_df.shape[0]}, columns (metadata) = {sc_metadata_df.shape[1]}"
     )
+    print("\n----------------------------------------------\n")
 
     return bulk_df, sc_df, sc_metadata_df
 
 
 def process_bulk(bulk: pd.DataFrame, sc: pd.DataFrame, sc_metadata: pd.DataFrame):
+    """
+    Process bulk data to keep only common genes with single-cell data, and
+    assert that all bulk samples have a corresponding single-cell sample.
+
+    Args:
+        bulk (pd.DataFrame): Bulk GEP data (genes x patients).
+        sc (pd.DataFrame): Single-cell GEP data ((patients * cells) x genes).
+        sc_metadata (pd.DataFrame): Single-cell metadata ((patients * cells) x metadata).
+
+    Returns:
+        tuple: Processed B matrix (patients x genes) and patient IDs.
+    """
+
     # Filter B to keep only common genes with S
     bulk_genes_all = bulk["gene_symbol"].str.strip().str.lower()
     common_genes = set(bulk_genes_all).intersection(
@@ -73,7 +114,7 @@ def process_bulk(bulk: pd.DataFrame, sc: pd.DataFrame, sc_metadata: pd.DataFrame
 
     # Normalize and convert to np array
     B = np.log1p(filtered_bulk_vals.values.T)
-    print(f"B dims (patients x genes): {B.shape}")
+    print(f"Filtered B dims (patients x genes): {B.shape}\n")
 
     # Assert that patient IDs in S match B
     sc_patient_ids = sc_metadata["patient_id"].unique()
@@ -126,11 +167,12 @@ def process_SC(sc_metadata: pd.DataFrame, patient_ids: np.ndarray, n_aug, aug_ra
         C_augs.append(patient_augs)
         processed_patients.append(pid)
 
+    print(f"\nProcessed patients: {len(processed_patients)}")
+
     C_augs = np.array(C_augs)
     # Flatten to 2D so each row is an augmentation for a specific patient
     C_flat = C_augs.reshape(-1, C_augs.shape[2])
     print(f"C dims ((patients * n_augs) x CTs): {C_flat.shape}")
-    print(f"Processed patients: {len(processed_patients)}")
 
     return C_flat, processed_patients
 
@@ -152,11 +194,10 @@ def data_prep_pipeline(n_aug, aug_ratio):
     C_flat, processed_patient_ids = process_SC(
         sc_metadata_df, patient_ids, n_aug, aug_ratio
     )
-    print("C sample:\n", C_flat[10:20, :])
 
     # Keep only patients with both B and C data
     B_filtered = B[np.isin(patient_ids, processed_patient_ids)]
-    print(f"Filtered B dims (patients x genes): {B_filtered.shape}")
+    print(f"\nFiltered B dims (patients x genes): {B_filtered.shape}")
 
     # Repeat B_i for each augmentation of S_i
     B_aug = np.repeat(B_filtered, n_aug, axis=0)
@@ -165,115 +206,142 @@ def data_prep_pipeline(n_aug, aug_ratio):
     return train_test_split(B_aug, C_flat, test_size=0.2, random_state=42)
 
 
-class ScadenNN(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(ScadenNN, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, 1000),
-            nn.ReLU(),
-            nn.BatchNorm1d(1000),
-            nn.Dropout(0.3),
-            nn.Linear(1000, 500),
-            nn.ReLU(),
-            nn.BatchNorm1d(500),
-            nn.Dropout(0.3),
-            nn.Linear(500, 100),
-            nn.ReLU(),
-            nn.BatchNorm1d(100),
-            nn.Linear(100, output_dim),
-        )
+def train_model(model, train_set, test_set, epochs, batch_size, optimizer, criterion):
+    """
+    Train any PyTorch model on the given datasets.
 
-    def forward(self, x):
-        return self.model(x)
+    Args:
+        model (nn.Module): PyTorch model to train.
+        train_set (TensorDataset): Training dataset.
+        test_set (TensorDataset): Validation dataset.
+        epochs (int): Number of training epochs.
+        batch_size (int): Batch size for training.
+        optimizer (torch.optim.Optimizer): Optimizer for training.
+        criterion (torch.nn.Module): Loss function for training.
 
-    def train(self, train_set, test_set, epochs, batch_size):
-        self.to(DEVICE)
-        train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
-        optimizer = optim.Adam(self.parameters(), lr=0.001)
-        criterion = nn.MSELoss()
+    Returns:
+        None
+    """
 
-        for e in range(epochs):
-            self.train()
-            epoch_loss = 0
-            for X_batch, y_batch in train_loader:
-                X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
-                optimizer.zero_grad()
-                outputs = self(X_batch)
-                loss = criterion(outputs, y_batch)
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
+    model.to(DEVICE)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
-            self.eval()
-            val_loss = 0
-            with torch.no_grad():
-                for X_val, y_val in test_loader:
-                    X_val, y_val = X_val.to(DEVICE), y_val.to(DEVICE)
-                    val_outputs = self(X_val)
-                    val_loss += criterion(val_outputs, y_val).item()
-            print(
-                f"Epoch {e+1}/{epochs}, Loss: {epoch_loss:.4f}, Val Loss: {val_loss:.4f}"
-            )
+    for e in range(epochs):
+        model.train()
+        epoch_loss = 0
+        for X_batch, y_batch in train_loader:
+            X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
+            optimizer.zero_grad()
+            outputs = model(X_batch)
+            loss = criterion(outputs, y_batch)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
 
-    def save(self, X_test, Y_test):
-        os.makedirs("output", exist_ok=True)
-        dtnum = str(datetime.datetime.now().strftime("%Y%m%d_%H%M"))
-        model_dir = os.path.join("output", "2dRNA", dtnum)
-        os.makedirs(model_dir, exist_ok=True)
-
-        model_path = os.path.join(model_dir, "model.pth")
-        torch.save(self.state_dict(), model_path)
-        print(f"Saved model to {model_path}")
-
-        # Save predictions and true fractions
-        X_test = torch.tensor(X_test, dtype=torch.float32)
-        Y_test = torch.tensor(Y_test, dtype=torch.float32)
-        self.eval()
+        model.eval()
+        val_loss = 0
         with torch.no_grad():
-            predictions = self(X_test.to(DEVICE)).cpu().numpy()
-        preds_file = os.path.join(model_dir, "pred_fractions.csv")
-        true_fractions_file = os.path.join(model_dir, "true_fractions.csv")
-        np.savetxt(preds_file, predictions, delimiter=",")
-        np.savetxt(true_fractions_file, Y_test.numpy(), delimiter=",")
-        print(f"Saved predictions to {preds_file}")
-        print(f"Saved true fractions to {true_fractions_file}")
-
-    def eval(self, X_test, Y_test):
-        print("\nEvaluating model on Y_test:")
-        X_test = torch.tensor(X_test, dtype=torch.float32)
-        Y_test = torch.tensor(Y_test, dtype=torch.float32)
-        self.eval()
-        with torch.no_grad():
-            Y_pred = self(X_test.to(DEVICE)).cpu()
-
-        target_min = Y_test.min()
-        target_max = Y_test.max()
-        target_mean = Y_test.mean()
-
-        mae = torch.mean(torch.abs(Y_pred - Y_test)).item()
-        rmse = torch.sqrt(torch.mean((Y_pred - Y_test) ** 2)).item()
-        cosine = (
-            torch.nn.functional.cosine_similarity(Y_pred, Y_test, dim=1).mean().item()
-        )
-
-        mae_pct_range = (mae / (target_max - target_min)) * 100
-        mae_pct_mean = (mae / target_mean) * 100
-        rmse_pct_range = (rmse / (target_max - target_min)) * 100
-        rmse_pct_mean = (rmse / target_mean) * 100
-
-        print(f" - Target value range: [{target_min:.4f}, {target_max:.4f}]")
-        print(f" - Target value average: {target_mean:.4f}")
-        print(f" - MAE: {mae:.4f}")
-        print(f" - MAE as percentage of range: {mae_pct_range:.2f}%")
-        print(f" - MAE as percentage of average: {mae_pct_mean:.2f}%")
-        print(f" - RMSE: {rmse:.4f}")
-        print(f" - RMSE as percentage of range: {rmse_pct_range:.2f}%")
-        print(f" - RMSE as percentage of average: {rmse_pct_mean:.2f}%")
-        print(f" - Cosine similarity: {cosine:.4f}")
+            for X_val, y_val in test_loader:
+                X_val, y_val = X_val.to(DEVICE), y_val.to(DEVICE)
+                val_outputs = model(X_val)
+                val_loss += criterion(val_outputs, y_val).item()
+        print(f"Epoch {e+1}/{epochs}, Loss: {epoch_loss:.4f}, Val Loss: {val_loss:.4f}")
 
 
-def main():
+def save_model(model, X_test, Y_test, model_name):
+    os.makedirs("output", exist_ok=True)
+    dtnum = str(datetime.datetime.now().strftime("%Y%m%d_%H%M"))
+    model_dir = os.path.join("output", "2dRNA", dtnum)
+    os.makedirs(model_dir, exist_ok=True)
+
+    model_path = os.path.join(model_dir, f"{model_name}.pth")
+    torch.save(model.state_dict(), model_path)
+    print(f"Saved {model_name} to {model_path}")
+
+    # Save predictions and true fractions
+    X_test = torch.tensor(X_test, dtype=torch.float32)
+    Y_test = torch.tensor(Y_test, dtype=torch.float32)
+    model.eval()
+    with torch.no_grad():
+        predictions = model(X_test.to(DEVICE)).cpu().numpy()
+    preds_file = os.path.join(model_dir, f"{model_name}_pred_fractions.csv")
+    true_fractions_file = os.path.join(model_dir, f"{model_name}_true_fractions.csv")
+    np.savetxt(preds_file, predictions, delimiter=",")
+    np.savetxt(true_fractions_file, Y_test.numpy(), delimiter=",")
+    print(f"Saved predictions to {preds_file}")
+    print(f"Saved true fractions to {true_fractions_file}")
+
+
+def evaluate_model(model, X_test, Y_test):
+    print("\nEvaluating model on Y_test:")
+    X_test = torch.tensor(X_test, dtype=torch.float32)
+    Y_test = torch.tensor(Y_test, dtype=torch.float32)
+    model.eval()
+    with torch.no_grad():
+        Y_pred = model(X_test.to(DEVICE)).cpu()
+
+    target_min = Y_test.min()
+    target_max = Y_test.max()
+    target_mean = Y_test.mean()
+
+    mae = torch.mean(torch.abs(Y_pred - Y_test)).item()
+    rmse = torch.sqrt(torch.mean((Y_pred - Y_test) ** 2)).item()
+    cosine = torch.nn.functional.cosine_similarity(Y_pred, Y_test, dim=1).mean().item()
+
+    mae_pct_range = (mae / (target_max - target_min)) * 100
+    mae_pct_mean = (mae / target_mean) * 100
+    rmse_pct_range = (rmse / (target_max - target_min)) * 100
+    rmse_pct_mean = (rmse / target_mean) * 100
+
+    print(f" - Target value range: [{target_min:.4f}, {target_max:.4f}]")
+    print(f" - Target value average: {target_mean:.4f}")
+    print(f" - MAE: {mae:.4f}")
+    print(f" - MAE as percentage of range: {mae_pct_range:.2f}%")
+    print(f" - MAE as percentage of average: {mae_pct_mean:.2f}%")
+    print(f" - RMSE: {rmse:.4f}")
+    print(f" - RMSE as percentage of range: {rmse_pct_range:.2f}%")
+    print(f" - RMSE as percentage of average: {rmse_pct_mean:.2f}%")
+    print(f" - Cosine similarity: {cosine:.4f}")
+
+
+def linear_pipeline():
+    X_train, X_test, Y_train, Y_test = data_prep_pipeline(N_AUG, AUG_RATIO)
+
+    train_dataset = TensorDataset(
+        torch.tensor(X_train, dtype=torch.float32),
+        torch.tensor(Y_train, dtype=torch.float32),
+    )
+    test_dataset = TensorDataset(
+        torch.tensor(X_test, dtype=torch.float32),
+        torch.tensor(Y_test, dtype=torch.float32),
+    )
+
+    input_dim = X_train.shape[1]
+    output_dim = Y_train.shape[1]
+    model = LinearModel(input_dim, output_dim)
+
+    epochs = 100
+    batch_size = 32
+    optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
+    criterion = nn.MSELoss()
+
+    print("\nTraining linear model...")
+    train_model(
+        model,
+        train_dataset,
+        test_dataset,
+        epochs=epochs,
+        batch_size=batch_size,
+        optimizer=optimizer,
+        criterion=criterion,
+    )
+    print("Linear model training complete!")
+    save_model(model, X_test, Y_test, "linear")
+    evaluate_model(model, X_test, Y_test)
+
+
+def scaden_pipeline():
     X_train, X_test, Y_train, Y_test = data_prep_pipeline(N_AUG, AUG_RATIO)
 
     train_dataset = TensorDataset(
@@ -288,17 +356,37 @@ def main():
     input_dim = X_train.shape[1]
     output_dim = Y_train.shape[1]
     model = ScadenNN(input_dim, output_dim)
-    epochs = 150
-    batch_size = 32
 
     saved_model_path = None  # "output/2dRNA/20241229_1515/model.pth"
     if saved_model_path and os.path.exists(saved_model_path):
         model.load_state_dict(torch.load(saved_model_path))
         print(f"Loaded model from {saved_model_path}")
     else:
-        print("Training model...")
-        model.train(model, train_dataset, test_dataset, epochs, batch_size)
-        print("Training complete!")
-        model.save(model, X_test, Y_test)
+        epochs = 150
+        batch_size = 32
+        optimizer = (
+            optim.Adam(model.parameters(), lr=0.001)
+            if isinstance(model, ScadenNN)
+            else optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
+        )
+        criterion = nn.MSELoss()
 
-    model.eval(model, X_test, Y_test)
+        print("\nTraining Scaden model...")
+        train_model(
+            model,
+            train_dataset,
+            test_dataset,
+            epochs=epochs,
+            batch_size=batch_size,
+            optimizer=optimizer,
+            criterion=criterion,
+        )
+        print("Training complete!")
+        save_model(model, X_test, Y_test, "scaden")
+
+    evaluate_model(model, X_test, Y_test)
+
+
+if __name__ == "__main__":
+    linear_pipeline()
+    # scaden_pipeline()
