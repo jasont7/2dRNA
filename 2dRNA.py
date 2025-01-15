@@ -1,7 +1,9 @@
+import sys
 import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -308,6 +310,11 @@ def evaluate_model(model, X_test, Y_test):
 def linear_pipeline():
     X_train, X_test, Y_train, Y_test = data_prep_pipeline(N_AUG, AUG_RATIO)
 
+    # Normalize data
+    scaler_X = StandardScaler()
+    X_train = scaler_X.fit_transform(X_train)
+    X_test = scaler_X.transform(X_test)
+
     train_dataset = TensorDataset(
         torch.tensor(X_train, dtype=torch.float32),
         torch.tensor(Y_train, dtype=torch.float32),
@@ -321,12 +328,19 @@ def linear_pipeline():
     output_dim = Y_train.shape[1]
     model = LinearModel(input_dim, output_dim)
 
-    epochs = 100
+    epochs = 300
     batch_size = 32
-    optimizer = optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
-    criterion = nn.MSELoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.001, weight_decay=1e-4)
+    criterion = nn.HuberLoss(delta=1.0)  # Use robust loss
 
-    print("\nTraining linear model...")
+    def init_weights(m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            nn.init.zeros_(m.bias)
+
+    model.apply(init_weights)
+
+    print("Training linear model...")
     train_model(
         model,
         train_dataset,
@@ -388,5 +402,9 @@ def scaden_pipeline():
 
 
 if __name__ == "__main__":
-    linear_pipeline()
-    # scaden_pipeline()
+    if sys.argv[1] == "linear":
+        linear_pipeline()
+    elif sys.argv[1] == "nonlinear":
+        scaden_pipeline()
+    else:
+        raise ValueError("Invalid pipeline argument. Choose 'linear' or 'nonlinear'.")
