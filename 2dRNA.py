@@ -2,63 +2,31 @@ import sys
 import os
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold, ParameterGrid
 from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from scipy.stats import wasserstein_distance
 import datetime
 import warnings
+import heapq
 
 warnings.filterwarnings("ignore")
-# pd.set_option("display.max_columns", None)
-# pd.set_option("display.width", 1000)
-# pd.set_option("display.max_colwidth", 100)
 np.set_printoptions(linewidth=120)
 np.set_printoptions(precision=4, suppress=True)
 
 
-########## CONSTANTS (please update) ##########
+### CONSTANTS ###
 BULK_PATH = "input/2dRNA/group1/bulk_RawCounts.tsv"
 SC_PATH = "input/2dRNA/group1/scRNA_CT1_top200_RawCounts.tsv"
 SC_METADATA_PATH = "input/2dRNA/group1/scRNA_CT1_top200_Metadata.tsv"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-N_AUG = 30
-AUG_RATIO = 0.9
-###############################################
 
-
-class LinearModel(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(LinearModel, self).__init__()
-        self.model = nn.Linear(input_dim, output_dim)
-
-    def forward(self, x):
-        return self.model(x)
-
-
-class ScadenNN(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(ScadenNN, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, 1000),
-            nn.ReLU(),
-            nn.BatchNorm1d(1000),
-            nn.Dropout(0.3),
-            nn.Linear(1000, 500),
-            nn.ReLU(),
-            nn.BatchNorm1d(500),
-            nn.Dropout(0.3),
-            nn.Linear(500, 100),
-            nn.ReLU(),
-            nn.BatchNorm1d(100),
-            nn.Linear(100, output_dim),
-        )
-
-    def forward(self, x):
-        return self.model(x)
+### DATA PREPROCESSING ###
 
 
 def load_data():
@@ -127,13 +95,13 @@ def process_bulk(bulk: pd.DataFrame, sc: pd.DataFrame, sc_metadata: pd.DataFrame
     return B, bulk_patient_ids
 
 
-def process_SC(sc_metadata: pd.DataFrame, patient_ids: np.ndarray, n_aug, aug_ratio):
+def process_single_cell(sc_metadata: pd.DataFrame, pids: np.ndarray, n_aug, aug_ratio):
     """
     Derive augmented C matrices with random sampling (not stratified).
 
     Args:
         sc_metadata (pd.DataFrame): Single-cell metadata containing patient and cell type information.
-        patient_ids (np.ndarray): Array of patient IDs in bulk data.
+        pids (np.ndarray): Array of patient IDs in bulk data.
         n_aug (int): Number of augmentations per patient.
         aug_ratio (float): Fraction of cells to sample for each augmentation (e.g., 0.9 for 90%).
 
@@ -145,7 +113,7 @@ def process_SC(sc_metadata: pd.DataFrame, patient_ids: np.ndarray, n_aug, aug_ra
     C_augs = []  # Augmentations for all patients
     processed_patients = []  # Successfully processed patient IDs
 
-    for pid in patient_ids:
+    for pid in pids:
         print(f"Augmenting Patient {pid}")
         patient_cells = sc_metadata[sc_metadata["patient_id"] == pid]
         if patient_cells.empty:
@@ -193,7 +161,7 @@ def data_prep_pipeline(n_aug, aug_ratio):
 
     bulk_df, sc_df, sc_metadata_df = load_data()
     B, patient_ids = process_bulk(bulk_df, sc_df, sc_metadata_df)
-    C_flat, processed_patient_ids = process_SC(
+    C_flat, processed_patient_ids = process_single_cell(
         sc_metadata_df, patient_ids, n_aug, aug_ratio
     )
 
@@ -208,50 +176,169 @@ def data_prep_pipeline(n_aug, aug_ratio):
     return train_test_split(B_aug, C_flat, test_size=0.2, random_state=42)
 
 
-def train_model(model, train_set, test_set, epochs, batch_size, optimizer, criterion):
-    """
-    Train any PyTorch model on the given datasets.
+### MODELLING ###
 
-    Args:
-        model (nn.Module): PyTorch model to train.
-        train_set (TensorDataset): Training dataset.
-        test_set (TensorDataset): Validation dataset.
-        epochs (int): Number of training epochs.
-        batch_size (int): Batch size for training.
-        optimizer (torch.optim.Optimizer): Optimizer for training.
-        criterion (torch.nn.Module): Loss function for training.
 
-    Returns:
-        None
-    """
+class LinearModel(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LinearModel, self).__init__()
+        self.model = nn.Linear(input_dim, output_dim)
 
-    model.to(DEVICE)
-    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    def forward(self, x):
+        return self.model(x)
 
+
+class NonlinearModel(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_layers, dropout_rate):
+        super(NonlinearModel, self).__init__()
+        layers = []
+        prev_dim = input_dim
+        for layer_size in hidden_layers:
+            layers.extend(
+                [
+                    nn.Linear(prev_dim, layer_size),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(layer_size),
+                    nn.Dropout(dropout_rate),
+                ]
+            )
+            prev_dim = layer_size
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+def train_model(model, train_loader, val_loader, optimizer, criterion, epochs):
     for e in range(epochs):
         model.train()
-        epoch_loss = 0
-        for X_batch, y_batch in train_loader:
-            X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
+        train_loss = 0
+        for X_batch, Y_batch in train_loader:
+            X_batch, Y_batch = X_batch.to(DEVICE), Y_batch.to(DEVICE)
             optimizer.zero_grad()
             outputs = model(X_batch)
-            loss = criterion(outputs, y_batch)
+            loss = criterion(outputs, Y_batch)
             loss.backward()
             optimizer.step()
-            epoch_loss += loss.item()
+            train_loss += loss.item()
 
         model.eval()
         val_loss = 0
         with torch.no_grad():
-            for X_val, y_val in test_loader:
-                X_val, y_val = X_val.to(DEVICE), y_val.to(DEVICE)
+            for X_val, Y_val in val_loader:
+                X_val, Y_val = X_val.to(DEVICE), Y_val.to(DEVICE)
                 val_outputs = model(X_val)
-                val_loss += criterion(val_outputs, y_val).item()
-        print(f"Epoch {e+1}/{epochs}, Loss: {epoch_loss:.4f}, Val Loss: {val_loss:.4f}")
+                val_loss += criterion(val_outputs, Y_val).item()
+        print(
+            f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
+        )
+    return val_loss
 
 
-def save_model(model, X_test, Y_test, model_name):
+def hyperparam_search_kf_cv(model_class, param_grid, X, Y, k=5):
+    """Hyperparameter search using k-fold cross-validation with ranked output."""
+    kfold = KFold(n_splits=k, shuffle=True, random_state=42)
+    best_params = None
+    best_combined_loss = float("inf")
+    param_heap = []
+
+    for idx, params in enumerate(ParameterGrid(param_grid)):
+        print(f"\nParam Set: {idx+1}/{len(ParameterGrid(param_grid))}")
+        model_params = {
+            k: v for k, v in params.items() if k not in ["lr", "epochs", "criterion"]
+        }
+
+        fold_losses = []
+        for train_idx, val_idx in kfold.split(X):
+            X_train, X_val = X[train_idx], X[val_idx]
+            Y_train, Y_val = Y[train_idx], Y[val_idx]
+
+            train_dataset = TensorDataset(
+                torch.tensor(X_train, dtype=torch.float32),
+                torch.tensor(Y_train, dtype=torch.float32),
+            )
+            val_dataset = TensorDataset(
+                torch.tensor(X_val, dtype=torch.float32),
+                torch.tensor(Y_val, dtype=torch.float32),
+            )
+            train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+            val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+            model = model_class(**model_params).to(DEVICE)
+            val_loss = train_model(
+                model,
+                train_loader,
+                val_loader,
+                optimizer=optim.Adam(model.parameters(), params["lr"]),
+                criterion=params["criterion"],
+                epochs=params["epochs"],
+            )
+            fold_losses.append(val_loss)
+
+        avg_loss = sum(fold_losses) / len(fold_losses)
+        print(f"Avg Loss for Params {params}: {avg_loss:.4f}")
+
+        heapq.heappush(param_heap, (avg_loss, params))
+
+        # Update best params
+        if avg_loss < best_combined_loss:
+            best_combined_loss = avg_loss
+            best_params = params
+
+    print(f"\nBest Params: {best_params} with Loss: {best_combined_loss:.4f}")
+
+    print("\nRanked Parameter Sets:")
+    ranked_params = sorted(param_heap)
+    for rank, (loss, param_set) in enumerate(ranked_params, start=1):
+        print(f"Rank {rank}: Loss = {loss:.4f}, Params = {model_params}")
+
+    return best_params
+
+
+### CUSTOM LOSS FUNCTIONS ###
+
+
+def kl_divergence_loss(y_true, y_pred):
+    epsilon = 1e-8
+    y_pred = torch.clamp(y_pred, min=epsilon, max=1)
+    y_true = torch.clamp(y_true, min=epsilon, max=1)
+    return torch.sum(y_true * torch.log(y_true / y_pred), dim=-1).mean()
+
+
+def wasserstein_loss(y_true, y_pred):
+    y_true_np = y_true.detach().cpu().numpy()
+    y_pred_np = y_pred.detach().cpu().numpy()
+    distances = [
+        wasserstein_distance(y_true_np[i], y_pred_np[i]) for i in range(len(y_true_np))
+    ]
+    return torch.tensor(distances, dtype=torch.float32, device=y_true.device).mean()
+
+
+def aitchison_distance_loss(y_true, y_pred):
+    epsilon = 1e-8
+    y_true = torch.clamp(y_true, min=epsilon, max=1)
+    y_pred = torch.clamp(y_pred, min=epsilon, max=1)
+    log_ratio_diff = torch.log(y_true / y_true.prod(dim=-1, keepdim=True)) - torch.log(
+        y_pred / y_pred.prod(dim=-1, keepdim=True)
+    )
+    return torch.sqrt(torch.mean(log_ratio_diff**2, dim=-1)).mean()
+
+
+def huber_loss(y_true, y_pred, delta=0.1):
+    return F.huber_loss(y_pred, y_true, delta=delta).mean()
+
+
+def focal_loss(y_true, y_pred, gamma=2.0):
+    epsilon = 1e-8
+    y_pred = torch.clamp(y_pred, min=epsilon, max=1 - epsilon)
+    ce = -y_true * torch.log(y_pred)
+    weight = (1 - y_pred) ** gamma
+    return (weight * ce).sum(dim=-1).mean()
+
+
+def save_to_disk(model, X_test, Y_test, model_name):
+    """Save model, predictions, and true fractions to disk."""
     os.makedirs("output", exist_ok=True)
     dtnum = str(datetime.datetime.now().strftime("%Y%m%d_%H%M"))
     model_dir = os.path.join("output", "2dRNA", dtnum)
@@ -275,7 +362,8 @@ def save_model(model, X_test, Y_test, model_name):
     print(f"Saved true fractions to {true_fractions_file}")
 
 
-def evaluate_model(model, X_test, Y_test):
+def print_model_eval_details(model, X_test, Y_test):
+    """Evaluate model on test set."""
     print("\nEvaluating model on Y_test:")
     X_test = torch.tensor(X_test, dtype=torch.float32)
     Y_test = torch.tensor(Y_test, dtype=torch.float32)
@@ -286,6 +374,7 @@ def evaluate_model(model, X_test, Y_test):
     target_min = Y_test.min()
     target_max = Y_test.max()
     target_mean = Y_test.mean()
+    target_median = torch.median(Y_test).item()
 
     mae = torch.mean(torch.abs(Y_pred - Y_test)).item()
     rmse = torch.sqrt(torch.mean((Y_pred - Y_test) ** 2)).item()
@@ -293,24 +382,93 @@ def evaluate_model(model, X_test, Y_test):
 
     mae_pct_range = (mae / (target_max - target_min)) * 100
     mae_pct_mean = (mae / target_mean) * 100
+    mae_pct_median = (mae / target_median) * 100
     rmse_pct_range = (rmse / (target_max - target_min)) * 100
     rmse_pct_mean = (rmse / target_mean) * 100
+    rmse_pct_median = (rmse / target_median) * 100
 
     print(f" - Target value range: [{target_min:.4f}, {target_max:.4f}]")
     print(f" - Target value average: {target_mean:.4f}")
     print(f" - MAE: {mae:.4f}")
     print(f" - MAE as percentage of range: {mae_pct_range:.2f}%")
     print(f" - MAE as percentage of average: {mae_pct_mean:.2f}%")
+    print(f" - MAE as percentage of median: {mae_pct_median:.2f}%")
     print(f" - RMSE: {rmse:.4f}")
     print(f" - RMSE as percentage of range: {rmse_pct_range:.2f}%")
     print(f" - RMSE as percentage of average: {rmse_pct_mean:.2f}%")
+    print(f" - RMSE as percentage of median: {rmse_pct_median:.2f}%")
     print(f" - Cosine similarity: {cosine:.4f}")
 
 
-def linear_pipeline():
-    X_train, X_test, Y_train, Y_test = data_prep_pipeline(N_AUG, AUG_RATIO)
+### PIPELINES ###
 
-    # Normalize data
+
+def nonlinear_pipeline():
+    X_train, X_test, Y_train, Y_test = data_prep_pipeline(n_aug=30, aug_ratio=0.9)
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+
+    train_dataset = TensorDataset(
+        torch.tensor(X_train, dtype=torch.float32),
+        torch.tensor(Y_train, dtype=torch.float32),
+    )
+    test_dataset = TensorDataset(
+        torch.tensor(X_test, dtype=torch.float32),
+        torch.tensor(Y_test, dtype=torch.float32),
+    )
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+
+    saved_model_path = None  # "output/2dRNA/20250116_..../model.pth"
+    if saved_model_path and os.path.exists(saved_model_path):
+        model = NonlinearModel(input_dim=X_train.shape[1], output_dim=Y_train.shape[1])
+        model.load_state_dict(torch.load(saved_model_path))
+        print(f"Loaded model from {saved_model_path}")
+    else:
+        param_grid = {
+            "input_dim": [X_train.shape[1]],
+            "output_dim": [Y_train.shape[1]],
+            "lr": [0.001],
+            "epochs": [150],
+            "criterion": [nn.MSELoss()],  # TODO: Add more loss functions here
+            "dropout_rate": [0.05, 0.1, 0.2],
+            "hidden_layers": [
+                [32],
+                [64],
+                [128],
+                [32, 32],
+                [64, 32],
+                [128, 32],
+                [128, 32, 64],
+            ],
+        }
+        best_params = hyperparam_search_kf_cv(
+            NonlinearModel, param_grid, X_train, Y_train, k=3
+        )
+        model_params = {
+            k: v
+            for k, v in best_params.items()
+            if k not in ["lr", "epochs", "criterion"]
+        }
+        model = NonlinearModel(**model_params).to(DEVICE)
+
+        print("\nTraining final model with best parameters...")
+        train_model(
+            model,
+            train_loader,
+            test_loader,
+            optimizer=optim.Adam(model.parameters(), best_params["lr"]),
+            criterion=best_params["criterion"],
+            epochs=150,
+        )
+        save_to_disk(model, X_test, Y_test, "nonlinear")
+
+    print_model_eval_details(model, X_test, Y_test)
+
+
+def linear_pipeline():
+    X_train, X_test, Y_train, Y_test = data_prep_pipeline(n_aug=30, aug_ratio=0.9)
     scaler_X = StandardScaler()
     X_train = scaler_X.fit_transform(X_train)
     X_test = scaler_X.transform(X_test)
@@ -323,88 +481,31 @@ def linear_pipeline():
         torch.tensor(X_test, dtype=torch.float32),
         torch.tensor(Y_test, dtype=torch.float32),
     )
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     input_dim = X_train.shape[1]
     output_dim = Y_train.shape[1]
     model = LinearModel(input_dim, output_dim)
 
-    epochs = 300
-    batch_size = 32
-    optimizer = optim.SGD(model.parameters(), lr=0.001, weight_decay=1e-4)
-    criterion = nn.HuberLoss(delta=1.0)  # Use robust loss
-
-    def init_weights(m):
-        if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform_(m.weight)
-            nn.init.zeros_(m.bias)
-
-    model.apply(init_weights)
-
     print("Training linear model...")
     train_model(
         model,
-        train_dataset,
-        test_dataset,
-        epochs=epochs,
-        batch_size=batch_size,
-        optimizer=optimizer,
-        criterion=criterion,
+        train_loader,
+        test_loader,
+        optimizer=optim.SGD(model.parameters(), lr=0.001, weight_decay=1e-4),
+        criterion=nn.HuberLoss(delta=1.0),
+        epochs=300,
     )
     print("Linear model training complete!")
-    save_model(model, X_test, Y_test, "linear")
-    evaluate_model(model, X_test, Y_test)
-
-
-def scaden_pipeline():
-    X_train, X_test, Y_train, Y_test = data_prep_pipeline(N_AUG, AUG_RATIO)
-
-    train_dataset = TensorDataset(
-        torch.tensor(X_train, dtype=torch.float32),
-        torch.tensor(Y_train, dtype=torch.float32),
-    )
-    test_dataset = TensorDataset(
-        torch.tensor(X_test, dtype=torch.float32),
-        torch.tensor(Y_test, dtype=torch.float32),
-    )
-
-    input_dim = X_train.shape[1]
-    output_dim = Y_train.shape[1]
-    model = ScadenNN(input_dim, output_dim)
-
-    saved_model_path = None  # "output/2dRNA/20241229_1515/model.pth"
-    if saved_model_path and os.path.exists(saved_model_path):
-        model.load_state_dict(torch.load(saved_model_path))
-        print(f"Loaded model from {saved_model_path}")
-    else:
-        epochs = 150
-        batch_size = 32
-        optimizer = (
-            optim.Adam(model.parameters(), lr=0.001)
-            if isinstance(model, ScadenNN)
-            else optim.SGD(model.parameters(), lr=0.01, weight_decay=1e-4)
-        )
-        criterion = nn.MSELoss()
-
-        print("\nTraining Scaden model...")
-        train_model(
-            model,
-            train_dataset,
-            test_dataset,
-            epochs=epochs,
-            batch_size=batch_size,
-            optimizer=optimizer,
-            criterion=criterion,
-        )
-        print("Training complete!")
-        save_model(model, X_test, Y_test, "scaden")
-
-    evaluate_model(model, X_test, Y_test)
+    save_to_disk(model, X_test, Y_test, "linear")
+    print_model_eval_details(model, X_test, Y_test)
 
 
 if __name__ == "__main__":
     if sys.argv[1] == "linear":
         linear_pipeline()
     elif sys.argv[1] == "nonlinear":
-        scaden_pipeline()
+        nonlinear_pipeline()
     else:
         raise ValueError("Invalid pipeline argument. Choose 'linear' or 'nonlinear'.")
