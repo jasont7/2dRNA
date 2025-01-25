@@ -21,8 +21,8 @@ np.set_printoptions(precision=4, suppress=True)
 
 ### CONSTANTS ###
 BULK_PATH = "input/2dRNA/group1/bulk_RawCounts.tsv"
-SC_PATH = "input/2dRNA/group1/scRNA_CT1_top200_RawCounts.tsv"
-SC_METADATA_PATH = "input/2dRNA/group1/scRNA_CT1_top200_Metadata.tsv"
+SC_PATH = "input/2dRNA/group1/scRNA_CT2_top500_RawCounts.tsv"
+SC_METADATA_PATH = "input/2dRNA/group1/scRNA_CT2_top500_Metadata.tsv"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -389,6 +389,7 @@ def print_model_eval_details(model, X_test, Y_test):
 
     print(f" - Target value range: [{target_min:.4f}, {target_max:.4f}]")
     print(f" - Target value average: {target_mean:.4f}")
+    print(f" - Target value median: {target_median:.4f}")
     print(f" - MAE: {mae:.4f}")
     print(f" - MAE as percentage of range: {mae_pct_range:.2f}%")
     print(f" - MAE as percentage of average: {mae_pct_mean:.2f}%")
