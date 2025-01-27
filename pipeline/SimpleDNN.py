@@ -9,22 +9,14 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SimpleDNN(nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_layers, dropout_rate):
+    def __init__(self, hidden_units, dropout_rate):
         super(SimpleDNN, self).__init__()
-        layers = []
-        prev_dim = input_dim
-        for layer_size in hidden_layers:
-            layers.extend(
-                [
-                    nn.Linear(prev_dim, layer_size),
-                    nn.ReLU(),
-                    nn.BatchNorm1d(layer_size),
-                    nn.Dropout(dropout_rate),
-                ]
-            )
-            prev_dim = layer_size
-        layers.append(nn.Linear(prev_dim, output_dim))
-        self.model = nn.Sequential(*layers)
+        self.model = nn.Sequential(
+            nn.Linear(10, hidden_units),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_units, 1),
+        )
 
     def forward(self, x):
         return self.model(x)
@@ -39,7 +31,31 @@ class SimpleLinear(nn.Module):
         return self.model(x)
 
 
-def train_nn_model(model, train_loader, val_loader, optimizer, criterion, epochs):
+def train_nn_model(
+    model, train_loader, val_loader, optimizer, criterion, epochs=1000, patience=20
+):
+    """
+    Train a PyTorch model on the given data.
+
+    Args:
+        model (nn.Module): PyTorch model to train.
+        train_loader (DataLoader): DataLoader for training data.
+        val_loader (DataLoader): DataLoader for validation data.
+        optimizer (torch.optim): PyTorch optimizer to use.
+        criterion (torch.nn): Loss function to use.
+        epochs (int): Number of epochs to train for.
+        patience (int): Number of epochs to wait for improvement before early stopping.
+
+    Returns:
+        float: Validation loss after training.
+
+    Side Effects:
+        - Updates model weights.
+        - Prints training and validation loss at each epoch.
+    """
+    best_val_loss = float("inf")
+    patience_counter = 0
+
     for e in range(epochs):
         model.train()
         train_loss = 0
@@ -59,15 +75,42 @@ def train_nn_model(model, train_loader, val_loader, optimizer, criterion, epochs
                 X_val, Y_val = X_val.to(DEVICE), Y_val.to(DEVICE)
                 val_outputs = model(X_val)
                 val_loss += criterion(val_outputs, Y_val).item()
+
         print(
             f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
         )
-    return val_loss
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(
+                    f"Early stopping at epoch {e+1}. Best Val Loss: {best_val_loss:.4f}"
+                )
+                break
+
+    return best_val_loss
 
 
 def hyperparam_search_simple_dnn(model_class, param_grid, X, Y, k=5):
     """
     Hyperparameter search using k-fold CV to find the best DNN architecture.
+
+    Args:
+        model_class (nn.Module): PyTorch model class to use.
+        param_grid (dict): Dictionary of hyperparameters to search over.
+        X (ndarray): Input data.
+        Y (ndarray): Target data.
+        k (int): Number of folds for cross-validation.
+
+    Returns:
+        dict: Best hyperparameters found during search.
+
+    Side Effects:
+        - Prints average loss for each parameter set.
+        - Prints best parameters and ranking.
     """
     kfold = KFold(n_splits=k, shuffle=True, random_state=42)
     best_params = None
@@ -121,7 +164,7 @@ def hyperparam_search_simple_dnn(model_class, param_grid, X, Y, k=5):
 
     print("\nRanked Parameter Sets:")
     ranked_params = sorted(param_heap)
-    for rank, (loss, param_set) in enumerate(ranked_params, start=1):
-        print(f"Rank {rank}: Loss = {loss:.4f}, Params = {model_params}")
+    for rank, (loss, params) in enumerate(ranked_params, start=1):
+        print(f"Rank {rank}: Loss = {loss:.4f}, Params = {params}")
 
     return best_params
