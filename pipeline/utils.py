@@ -19,7 +19,7 @@ def save_to_disk(model, X_test=None, Y_test=None, name="Model"):
     torch.save(model.state_dict(), model_path)
     print(f"Saved {name} to {model_path}")
 
-    if X_test and Y_test:
+    if X_test is not None and Y_test is not None:
         # Save predictions and true fractions
         X_test = torch.tensor(X_test, dtype=torch.float32)
         Y_test = torch.tensor(Y_test, dtype=torch.float32)
