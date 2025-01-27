@@ -1,22 +1,31 @@
 from sklearn.model_selection import KFold, ParameterGrid
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from ray import tune
 import heapq
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class SimpleDNN(nn.Module):
-    def __init__(self, hidden_units, dropout_rate):
+    def __init__(self, input_dim, output_dim, hidden_layers):
         super(SimpleDNN, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(10, hidden_units),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(hidden_units, 1),
-        )
+        layers = []
+        prev_dim = input_dim
+        for hidden_dim, dropout_rate in zip(*hidden_layers):
+            layers.extend(
+                [
+                    nn.Linear(prev_dim, hidden_dim),
+                    nn.ReLU(),
+                    nn.Dropout(dropout_rate),
+                ]
+            )
+            prev_dim = hidden_dim
+        layers.append(nn.Linear(prev_dim, output_dim))
+        self.model = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.model(x)
@@ -31,28 +40,53 @@ class SimpleLinear(nn.Module):
         return self.model(x)
 
 
-def train_nn_model(
-    model, train_loader, val_loader, optimizer, criterion, epochs=1000, patience=20
+def train_simple_dnn(
+    model: nn.Module,
+    X_train,
+    X_test,
+    Y_train,
+    Y_test,
+    criterion=nn.L1Loss(),
+    batch_size=32,
+    epochs=1000,
+    patience=20,
+    lr=0.001,
 ):
     """
-    Train a PyTorch model on the given data.
+    Train a SimpleDNN PyTorch model on the given data.
 
     Args:
         model (nn.Module): PyTorch model to train.
-        train_loader (DataLoader): DataLoader for training data.
-        val_loader (DataLoader): DataLoader for validation data.
-        optimizer (torch.optim): PyTorch optimizer to use.
-        criterion (torch.nn): Loss function to use.
-        epochs (int): Number of epochs to train for.
+        X_train (ndarray): Training input data.
+        X_test (ndarray): Validation input data.
+        Y_train (ndarray): Training output data.
+        Y_test (ndarray): Validation output data.
+        criterion (torch.nn): Loss function
+        batch_size (int): Number of samples per batch.
+        epochs (int)
         patience (int): Number of epochs to wait for improvement before early stopping.
+        lr (float): Learning rate.
 
     Returns:
         float: Validation loss after training.
-
-    Side Effects:
-        - Updates model weights.
-        - Prints training and validation loss at each epoch.
     """
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+
+    train_dataset = TensorDataset(
+        torch.tensor(X_train, dtype=torch.float32),
+        torch.tensor(Y_train, dtype=torch.float32),
+    )
+    test_dataset = TensorDataset(
+        torch.tensor(X_test, dtype=torch.float32),
+        torch.tensor(Y_test, dtype=torch.float32),
+    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
     best_val_loss = float("inf")
     patience_counter = 0
 
@@ -94,15 +128,14 @@ def train_nn_model(
     return best_val_loss
 
 
-def hyperparam_search_simple_dnn(model_class, param_grid, X, Y, k=5):
+def hyperparam_search_simple_dnn(X, Y, param_grid, k=5):
     """
     Hyperparameter search using k-fold CV to find the best DNN architecture.
 
     Args:
-        model_class (nn.Module): PyTorch model class to use.
-        param_grid (dict): Dictionary of hyperparameters to search over.
         X (ndarray): Input data.
-        Y (ndarray): Target data.
+        Y (ndarray): Output data.
+        param_grid (dict): Dictionary of hyperparameters to search over.
         k (int): Number of folds for cross-validation.
 
     Returns:
@@ -119,34 +152,27 @@ def hyperparam_search_simple_dnn(model_class, param_grid, X, Y, k=5):
 
     for idx, params in enumerate(ParameterGrid(param_grid)):
         print(f"\nParam Set: {idx+1}/{len(ParameterGrid(param_grid))}")
-        model_params = {
-            k: v for k, v in params.items() if k not in ["lr", "epochs", "criterion"]
-        }
 
         fold_losses = []
-        for train_idx, val_idx in kfold.split(X):
-            X_train, X_val = X[train_idx], X[val_idx]
-            Y_train, Y_val = Y[train_idx], Y[val_idx]
+        for train_idx, test_idx in kfold.split(X):
+            X_train, X_test = X[train_idx], X[test_idx]
+            Y_train, Y_test = Y[train_idx], Y[test_idx]
+            input_dim = X_train.shape[1]
+            output_dim = Y_train.shape[1]
 
-            train_dataset = TensorDataset(
-                torch.tensor(X_train, dtype=torch.float32),
-                torch.tensor(Y_train, dtype=torch.float32),
-            )
-            val_dataset = TensorDataset(
-                torch.tensor(X_val, dtype=torch.float32),
-                torch.tensor(Y_val, dtype=torch.float32),
-            )
-            train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-            val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+            model = SimpleDNN(input_dim, output_dim, params["hidden_layers"]).to(DEVICE)
 
-            model = model_class(**model_params).to(DEVICE)
-            val_loss = train_nn_model(
+            val_loss = train_simple_dnn(
                 model,
-                train_loader,
-                val_loader,
-                optimizer=optim.Adam(model.parameters(), params["lr"]),
+                X_train,
+                X_test,
+                Y_train,
+                Y_test,
                 criterion=params["criterion"],
+                batch_size=params["batch_size"],
                 epochs=params["epochs"],
+                patience=params["patience"],
+                lr=params["lr"],
             )
             fold_losses.append(val_loss)
 
@@ -155,14 +181,13 @@ def hyperparam_search_simple_dnn(model_class, param_grid, X, Y, k=5):
 
         heapq.heappush(param_heap, (avg_loss, params))
 
-        # Update best params
         if avg_loss < best_combined_loss:
             best_combined_loss = avg_loss
             best_params = params
 
-    print(f"\nBest Params: {best_params} with Loss: {best_combined_loss:.4f}")
+    print(f"\nBest Params: {best_params}")
 
-    print("\nRanked Parameter Sets:")
+    print("\nParam Set Ranking:")
     ranked_params = sorted(param_heap)
     for rank, (loss, params) in enumerate(ranked_params, start=1):
         print(f"Rank {rank}: Loss = {loss:.4f}, Params = {params}")
