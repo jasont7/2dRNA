@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 
 
 def load_data(bulk_path, sc_path, sc_metadata_path):
@@ -133,7 +132,7 @@ def data_prep_pipeline(bulk_path, sc_path, sc_metadata_path, n_aug, aug_ratio):
         aug_ratio (float): Fraction of cells to sample for each augmentation (e.g., 0.9 for 90%).
 
     Returns:
-        tuple: Train-test split of B and C matrices (X_train, X_test, Y_train, Y_test).
+        tuple: (B, C) data for training.
     """
 
     bulk_df, sc_df, sc_metadata_df = load_data(bulk_path, sc_path, sc_metadata_path)
@@ -150,4 +149,4 @@ def data_prep_pipeline(bulk_path, sc_path, sc_metadata_path, n_aug, aug_ratio):
     B_aug = np.repeat(B_filtered, n_aug, axis=0)
     print(f"Flattened B dims ((patients * n_augs) x genes): {B_aug.shape}")
 
-    return train_test_split(B_aug, C_flat, test_size=0.2, random_state=42)
+    return B_aug, C_flat
