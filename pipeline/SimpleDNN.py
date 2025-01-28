@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from ray import tune
 import heapq
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,7 +27,7 @@ class SimpleDNN(nn.Module):
         self.model = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.model(x)
+        return nn.functional.softmax(self.model(x), dim=1)
 
 
 class SimpleLinear(nn.Module):
@@ -41,16 +40,16 @@ class SimpleLinear(nn.Module):
 
 
 def train_simple_dnn(
-    model: nn.Module,
+    model: SimpleDNN,
     X_train,
     X_test,
     Y_train,
     Y_test,
-    criterion=nn.L1Loss(),
-    batch_size=32,
-    epochs=1000,
-    patience=20,
-    lr=0.001,
+    batch_size=128,
+    criterion=nn.MSELoss(),
+    lr=0.0001,
+    epochs=3000,
+    patience=200,
 ):
     """
     Train a SimpleDNN PyTorch model on the given data.
@@ -111,7 +110,7 @@ def train_simple_dnn(
                 val_loss += criterion(val_outputs, Y_val).item()
 
         print(
-            f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}"
+            f"Epoch {e+1}/{epochs}, Train Loss: {train_loss:.7f}, Val Loss: {val_loss:.7f}"
         )
 
         if val_loss < best_val_loss:
@@ -120,9 +119,7 @@ def train_simple_dnn(
         else:
             patience_counter += 1
             if patience_counter >= patience:
-                print(
-                    f"Early stopping at epoch {e+1}. Best Val Loss: {best_val_loss:.4f}"
-                )
+                print(f"Early stop at epoch {e+1}. Best Val Loss: {best_val_loss:.7f}")
                 break
 
     return best_val_loss
@@ -140,10 +137,6 @@ def hyperparam_search_simple_dnn(X, Y, param_grid, k=5):
 
     Returns:
         dict: Best hyperparameters found during search.
-
-    Side Effects:
-        - Prints average loss for each parameter set.
-        - Prints best parameters and ranking.
     """
     kfold = KFold(n_splits=k, shuffle=True, random_state=42)
     best_params = None
@@ -162,22 +155,19 @@ def hyperparam_search_simple_dnn(X, Y, param_grid, k=5):
 
             model = SimpleDNN(input_dim, output_dim, params["hidden_layers"]).to(DEVICE)
 
+            train_params = {k: v for k, v in params.items() if k != "hidden_layers"}
             val_loss = train_simple_dnn(
                 model,
                 X_train,
                 X_test,
                 Y_train,
                 Y_test,
-                criterion=params["criterion"],
-                batch_size=params["batch_size"],
-                epochs=params["epochs"],
-                patience=params["patience"],
-                lr=params["lr"],
+                **train_params,
             )
             fold_losses.append(val_loss)
 
         avg_loss = sum(fold_losses) / len(fold_losses)
-        print(f"Avg Loss for Params {params}: {avg_loss:.4f}")
+        print(f"Avg Loss for Params {params}: {avg_loss:.7f}")
 
         heapq.heappush(param_heap, (avg_loss, params))
 
@@ -190,6 +180,6 @@ def hyperparam_search_simple_dnn(X, Y, param_grid, k=5):
     print("\nParam Set Ranking:")
     ranked_params = sorted(param_heap)
     for rank, (loss, params) in enumerate(ranked_params, start=1):
-        print(f"Rank {rank}: Loss = {loss:.4f}, Params = {params}")
+        print(f"Rank {rank}: Loss = {loss:.7f}, Params = {params}")
 
     return best_params

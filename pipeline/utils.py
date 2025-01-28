@@ -34,11 +34,11 @@ def save_to_disk(model, X_test=None, Y_test=None, name="Model"):
         print(f"Saved true fractions to {true_fractions_file}")
 
 
-def print_eval(X_test, Y_test, Y_pred=None, model=None, name="Model"):
+def print_eval(Y_test, Y_pred=None, model=None, X_test=None, name="? Model"):
     """
-    Print evaluation metrics for model on test set by comparing Y_pred to Y_test.
+    Print evaluation metrics for model on test set by comparing Y_test to Y_pred.
     Y_pred is the model's predictions on X_test IF a model is provided. Otherwise,
-    Y_pred is provided directly.
+    Y_pred must be provided to be compared directly.
     """
     if model is None and Y_pred is None:
         raise ValueError("Either model or Y_pred must be provided.")
@@ -76,15 +76,15 @@ def print_eval(X_test, Y_test, Y_pred=None, model=None, name="Model"):
     rmse_pct_median = (rmse / target_median) * 100
 
     print(f"\nEvaluation Metrics for {name}:")
-    print(f" - Target value range: [{target_min:.4f}, {target_max:.4f}]")
-    print(f" - Target value mean: {target_mean:.4f}")
-    print(f" - Target value median: {target_median:.4f}")
-    print(f" - MAE: {mae:.4f}")
+    print(f" - Target value range: [{target_min:.7f}, {target_max:.7f}]")
+    print(f" - Target value mean: {target_mean:.7f}")
+    print(f" - Target value median: {target_median:.7f}")
+    print(f" - MAE: {mae:.7f}")
     print(f" - MAE as % of range: {mae_pct_range:.2f}%")
     print(f" - MAE as % of mean: {mae_pct_mean:.2f}%")
     print(f" - MAE as % of median: {mae_pct_median:.2f}%")
-    print(f" - RMSE: {rmse:.4f}")
+    print(f" - RMSE: {rmse:.7f}")
     print(f" - RMSE as % of range: {rmse_pct_range:.2f}%")
     print(f" - RMSE as % of mean: {rmse_pct_mean:.2f}%")
     print(f" - RMSE as % of median: {rmse_pct_median:.2f}%")
-    print(f" - Cosine similarity: {cosine:.4f}")
+    print(f" - Cosine similarity: {cosine:.7f}")
