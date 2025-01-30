@@ -6,7 +6,6 @@ import warnings
 from process import data_prep_pipeline
 from SimpleDNN import (
     SimpleDNN,
-    SimpleLinear,
 )
 from utils import print_eval
 
@@ -93,15 +92,15 @@ def predict_scaden(m256_path, m512_path, m1024_path):
 
 
 def main():
-    # predict_simple_dnn(
-    #     model_path="output/2dRNA/20250127_1614/m256.pth",
-    #     hidden_layers=([256, 128, 64, 32], [0, 0, 0, 0]),
-    # )
-    predict_scaden(
-        m256_path="output/2dRNA/20250127_1614/m256.pth",
-        m512_path="output/2dRNA/20250127_1619/m512.pth",
-        m1024_path="output/2dRNA/20250127_1620/m1024.pth",
+    predict_simple_dnn(
+        model_path="output/2dRNA/20250128_0224/SimpleDNN.pth",
+        hidden_layers=([1024, 512], [0.05, 0.05]),
     )
+    # predict_scaden(
+    #     m256_path="output/2dRNA/20250127_1614/m256.pth",
+    #     m512_path="output/2dRNA/20250127_1619/m512.pth",
+    #     m1024_path="output/2dRNA/20250127_1620/m1024.pth",
+    # )
 
 
 if __name__ == "__main__":

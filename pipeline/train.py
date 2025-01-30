@@ -10,7 +10,6 @@ from process import data_prep_pipeline
 from predict import predict_ensemble_avg
 from SimpleDNN import (
     SimpleDNN,
-    SimpleLinear,
     train_simple_dnn,
     hyperparam_search_simple_dnn,
 )
@@ -127,47 +126,10 @@ def pipeline_scaden():
     print_eval(Y_test, Y_pred=ensemble_predictions, name="ScadenEnsemble")
 
 
-def pipeline_simple_linear():
-    X_train, X_test, Y_train, Y_test = data_prep_pipeline(
-        BULK_PATH, SC_PATH, SC_METADATA_PATH, n_aug=30, aug_ratio=0.9
-    )
-    scaler_X = StandardScaler()
-    X_train = scaler_X.fit_transform(X_train)
-    X_test = scaler_X.transform(X_test)
-
-    train_dataset = TensorDataset(
-        torch.tensor(X_train, dtype=torch.float32),
-        torch.tensor(Y_train, dtype=torch.float32),
-    )
-    test_dataset = TensorDataset(
-        torch.tensor(X_test, dtype=torch.float32),
-        torch.tensor(Y_test, dtype=torch.float32),
-    )
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-    input_dim = X_train.shape[1]
-    output_dim = Y_train.shape[1]
-    model = SimpleLinear(input_dim, output_dim)
-
-    print("Training linear model...")
-    train_simple_dnn(
-        model,
-        train_loader,
-        test_loader,
-        criterion=nn.HuberLoss(delta=1.0),
-    )
-    print("Linear model training complete!")
-    save_to_disk(model, X_test, Y_test, "SimpleLinear")
-    print_eval(Y_test, model=model, X_test=X_test, name="SimpleLinear")
-
-
 if __name__ == "__main__":
     if sys.argv[1] == "SimpleDNN":
         pipeline_simple_dnn()
     elif sys.argv[1] == "Scaden":
         pipeline_scaden()
-    elif sys.argv[1] == "SimpleLinear":
-        pipeline_simple_linear()
     else:
         raise ValueError("Invalid pipeline argument.")
