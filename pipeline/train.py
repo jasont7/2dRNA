@@ -1,10 +1,8 @@
 import sys
 import numpy as np
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 import warnings
 from process import data_prep_pipeline
 from predict import predict_ensemble_avg
@@ -13,7 +11,7 @@ from SimpleDNN import (
     train_simple_dnn,
     hyperparam_search_simple_dnn,
 )
-from utils import save_to_disk, print_eval
+from utils import save_to_disk, eval_metrics
 
 warnings.filterwarnings("ignore")
 np.set_printoptions(linewidth=120)
@@ -81,7 +79,8 @@ def pipeline_simple_dnn():
     print("\nTraining final model with best parameters...")
     train_simple_dnn(final_model, X_train, X_test, Y_train, Y_test)
     save_to_disk(final_model, X_test, Y_test, "SimpleDNN")
-    print_eval(Y_test, model=final_model, X_test=X_test, name="SimpleDNN")
+
+    print(eval_metrics(Y_test, model=final_model, X_test=X_test))
 
 
 def pipeline_scaden():
@@ -120,10 +119,9 @@ def pipeline_scaden():
             patience=500,
         )
         save_to_disk(model, X_test, Y_test, name)
-        print_eval(Y_test, model=model, X_test=X_test, name=name)
 
     ensemble_predictions = predict_ensemble_avg(ensemble_models, X_test)
-    print_eval(Y_test, Y_pred=ensemble_predictions, name="ScadenEnsemble")
+    print(eval_metrics(Y_test, Y_pred=ensemble_predictions))
 
 
 if __name__ == "__main__":
