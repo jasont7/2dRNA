@@ -57,12 +57,14 @@ Additionally, SimpleDNN is implemented in **PyTorch**, addressing the maintainab
 
 Our experimental results demonstrate that SimpleDNN significantly outperforms Scaden (both trained and evaluated on our paired dataset). We assess performance using multiple evaluation metrics, including mean squared error (MSE), R², KL divergence, and Wasserstein distance.
 
-| Metric               | Scaden    | SimpleDNN | Improvement (%) |
-| -------------------- | --------- | --------- | --------------- |
-| MSE                  | 0.0001557 | 0.0000051 | 96.72%          |
-| R²                   | 0.9971277 | 0.9999056 | 0.28%           |
-| KL Divergence        | 0.0001256 | 0.0000037 | 97.05%          |
-| Wasserstein Distance | 0.0060528 | 0.0010639 | 82.42%          |
+| Metric                | Scaden    | SimpleDNN | Improvement (%) |
+| --------------------- | --------- | --------- | --------------- |
+| Target Value Mean     | 0.0909091 | 0.0909091 | N/A             |
+| Target Value Variance | 0.0542581 | 0.0542581 | N/A             |
+| MSE                   | 0.0001557 | 0.0000051 | 96.72%          |
+| R²                    | 0.9971277 | 0.9999056 | 0.28%           |
+| KL Divergence         | 0.0001256 | 0.0000037 | 97.05%          |
+| Wasserstein Distance  | 0.0060528 | 0.0010639 | 82.42%          |
 
 These results indicate that hyperparameter tuning leads to consistent improvements across all evaluation metrics, further supporting the advantage of our method over Scaden.
 
