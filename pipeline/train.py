@@ -23,9 +23,9 @@ np.random.seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
-BULK_PATH = "input/2dRNA/group1/bulk_RawCounts.tsv"
-SC_PATH = "input/2dRNA/group1/scRNA_CT2_top500_RawCounts.tsv"
-SC_METADATA_PATH = "input/2dRNA/group1/scRNA_CT2_top500_Metadata.tsv"
+BULK_PATH = "input/2dRNA/bulk_RawCounts.tsv"
+SC_PATH = "input/2dRNA/scRNA_CT2_top500_RawCounts.tsv"
+SC_METADATA_PATH = "input/2dRNA/scRNA_CT2_top500_Metadata.tsv"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
