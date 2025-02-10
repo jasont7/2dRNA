@@ -2,11 +2,29 @@
 
 ## 1. Introduction
 
-Cellular deconvolution is the process of estimating cell type fractions from bulk RNA sequencing (RNA-seq) data. Bulk RNA-seq provides an aggregate measure of gene expression across all cells in a tissue sample, making it impossible to distinguish individual contributions from different cell types. This limitation has driven the development of computational methods aimed at deconvoluting bulk expression profiles into meaningful cell type proportions.
+The study of tissue-specific gene expression through next-generation sequencing, particularly RNA sequencing (RNA-seq), plays a crucial role in understanding biological and disease processes. However, a major challenge of bulk RNA-seq is that it captures an aggregate gene expression signal from a heterogeneous mixture of cell types, each with distinct functional states. Differences in gene expression between conditions may result from shifts in the cellular composition of the tissue, intrinsic changes within specific cell populations, or a combination of both. Accurately disentangling these factors is especially critical in diseases characterized by cell proliferation, such as cancer, or by progressive cell loss, as seen in neurodegenerative disorders and chronic conditions like chronic obstructive pulmonary disease (COPD), where alterations in tissue composition can confound gene expression analysis.
 
-Existing approaches to cellular deconvolution fall into two main categories: linear and nonlinear methods. Linear methods, such as CIBERSORT (based on NNLS), assume a proportional relationship between bulk expression and individual cell types. Modern linear methods also incorporate additional information, such as prior knowledge of expression patterns, reference profiles, and statistical regularization techniques to improve robustness. Examples include constrained regression approaches and Bayesian deconvolution models. While linear methods are widely used, they are inherently limited in modelling complex, nonlinear gene expression relationships.
+Cellular deconvolution is the process of estimating cell type fractions in a **tissue sample** from bulk RNA sequencing (RNA-seq) data. Bulk RNA-seq provides an aggregate measure of gene expression profiles (GEPs) across **all cells** in a tissue, making it impossible to distinguish GEP contributions from each individual cell type. This limitation has driven the development of computational methods aimed at deconvolving bulk RNA-seq GEPs into meaningful cell type proportions.
 
-Nonlinear methods, particularly deep learning approaches, aim to overcome this limitation. Scaden (2020), currently the most prominent nonlinear deconvolution method, uses deep learning to infer cell-type proportions from bulk RNA-seq. However, Scaden relies on training with **simulated** bulk data rather than **real paired** bulk and single-cell RNA-seq (scRNA-seq) data, where **paired** refers to bulk and scRNA-seq samples collected from the same patients. Our work extends Scaden by leveraging a novel dataset of real paired bulk-scRNA samples, as well as a new deep neural network (DNN) architecture optimized specifically for this dataset, leading to improved model performance and generalizability.
+Existing approaches to cellular deconvolution fall into two main categories: linear and nonlinear methods. Linear methods, such as CIBERSORT (which uses Non-negative Least Squares, NNLS), assume that the gene expression measured in bulk RNA-seq is a **weighted sum** of reference gene expression signatures, where the weights correspond to the proportions of each cell type in the sample. Here, **reference gene expression signatures** refer to characteristic gene expression patterns associated with specific cell types, typically derived from single-cell RNA sequencing (scRNA-seq) or sorted cell populations.
+
+More advanced linear methods incorporate additional constraints and prior knowledge to improve accuracy. For example, constrained regression approaches, such as CIBERSORTx, use statistical regularization techniques like ridge regression to reduce overfitting. Bayesian deconvolution models, such as BSEQ-sc, encode prior distributions over cell type proportions to improve robustness. Other methods, such as MuSiC, leverage **reference expression matrices**, which are collections of reference gene expression signatures constructed from scRNA-seq data, to refine predictions. Despite these improvements, linear models struggle to capture the **nonlinear relationships** present in gene expression data, particularly in complex tissues where cell-cell interactions and regulatory effects alter gene expression in ways that cannot be represented as a simple weighted sum.
+
+Nonlinear methods, particularly deep learning approaches, aim to overcome these limitations by learning complex mappings between bulk RNA-seq and cell type proportions. Scaden (2020), is the most widely known nonlinear deconvolution method, which employs deep neural networks (DNNs) trained to infer cell type proportions directly from bulk RNA-seq. However, Scaden relies on training with **pseudo-bulk** RNA-seq data rather than **real paired** bulk and single-cell RNA-seq (scRNA-seq) data. Here, **pseudo-bulk** refers to bulk RNA-seq profiles that are computationally generated by aggregating expression values of individual cells, mimicking an experimentally measured bulk sample. In contrast, **real paired** data consists of experimentally measured bulk RNA-seq samples with corresponding scRNA-seq profiles from the **same biological source**, such as a patient tissue sample. The key difference is that pseudo-bulk data lacks technical noise and batch effects inherent in real experimental bulk measurements, potentially leading to models that generalize poorly to real-world data.
+
+The **first research question** we address is: Can deep learning-based deconvolution models effectively learn from real-world paired bulk and single-cell RNA-seq data, which exhibit biological variability and technical noise, as opposed to performing well only on controlled or computationally generated datasets?
+
+To explore this, we develop a deep learning model trained on real paired bulk-scRNA samples, allowing it to learn from the inherent complexities of experimental data. Unlike pseudo-bulk data, real paired datasets exhibit biological variability and technical noise introduced by differences in sequencing protocols, RNA extraction methods, and measurement discrepancies between bulk and single-cell technologies. These factors can lead to systematic biases, such as differences in gene capture efficiency and sequencing depth, which pseudo-bulk data does not replicate. By training on real paired data, our model is better suited for practical applications where such variations naturally occur in bulk RNA-seq samples.
+
+The second research question we address is: What is the optimal neural network architecture for deconvolving real paired bulk-scRNA data, balancing model complexity, generalization ability, and computational efficiency?
+
+To address this, we develop a novel deep neural network (DNN) architecture tailored to real paired datasets. Unlike Scaden, which uses a fixed ensemble architecture, we optimize the network structure through hyperparameter tuning of variables such as network depth, layer sizes, and dropout rates. We also enhance model efficiency by selecting only informative feature genes, reducing the size of the input bulk RNA-seq vector. This dimensionality reduction improves computational efficiency while preserving the most relevant information for accurate cell type proportion estimation. These enhancements result in greater accuracy, improved robustness across different tissue types, and better generalization to unseen datasets, making our approach more reliable for real-world deconvolution tasks.
+
+In summary, our contributions are:
+
+1. **Training on real paired bulk-scRNA data** – Unlike previous deep learning-based deconvolution models that rely on pseudo-bulk data, we train on experimentally measured real paired bulk and single-cell RNA-seq samples. This allows our model to learn from biological variability and technical noise inherent in real-world datasets, improving its applicability to practical scenarios.
+2. **Developing an optimized neural network architecture** – We design a deep neural network (DNN) architecture specifically tailored for real paired bulk-scRNA deconvolution. Instead of using a fixed architecture like Scaden, we apply hyperparameter tuning to optimize network depth, layer sizes, and dropout rates for improved generalization and robustness.
+3. **Improving model efficiency through feature selection** – To enhance computational efficiency, we reduce the input dimension by selecting only informative feature genes from the bulk RNA-seq vector. This ensures the model focuses on the most relevant signals while maintaining deconvolution accuracy and reducing unnecessary complexity.
 
 ## 2. Scaden: A Nonlinear Approach Using Simulated Data
 
@@ -57,14 +75,12 @@ Additionally, SimpleDNN is implemented in **PyTorch**, addressing the maintainab
 
 Our experimental results demonstrate that SimpleDNN significantly outperforms Scaden (both trained and evaluated on our paired dataset). We assess performance using multiple evaluation metrics, including mean squared error (MSE), R², KL divergence, and Wasserstein distance.
 
-| Metric                | Scaden    | SimpleDNN | Improvement (%) |
-| --------------------- | --------- | --------- | --------------- |
-| Target Value Mean     | 0.0909091 | 0.0909091 | N/A             |
-| Target Value Variance | 0.0542581 | 0.0542581 | N/A             |
-| MSE                   | 0.0001557 | 0.0000051 | 96.72%          |
-| R²                    | 0.9971277 | 0.9999056 | 0.28%           |
-| KL Divergence         | 0.0001256 | 0.0000037 | 97.05%          |
-| Wasserstein Distance  | 0.0060528 | 0.0010639 | 82.42%          |
+| Metric               | Scaden    | SimpleDNN | Improvement (%) |
+| -------------------- | --------- | --------- | --------------- |
+| MSE                  | 0.0001557 | 0.0000051 | 96.72%          |
+| R²                   | 0.9971277 | 0.9999056 | 0.28%           |
+| KL Divergence        | 0.0001256 | 0.0000037 | 97.05%          |
+| Wasserstein Distance | 0.0060528 | 0.0010639 | 82.42%          |
 
 These results indicate that hyperparameter tuning leads to consistent improvements across all evaluation metrics, further supporting the advantage of our method over Scaden.
 
